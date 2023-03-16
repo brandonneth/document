@@ -1,0 +1,5 @@
+Kernel               , RAJA_OpenMP , Hand_Opt , LoopChain
+Lcals_GEN_LIN_RECUR  ,    0.872816 , 0.822390 ,  0.930282
+Polybench_FDTD_2D    ,    1.665351 , 1.483946 ,  1.558319
+Apps_ENERGY          ,    0.852335 , 1.217293 ,  1.489232
+Apps_PRESSURE        ,    1.092957 , 1.136333 ,  1.148530

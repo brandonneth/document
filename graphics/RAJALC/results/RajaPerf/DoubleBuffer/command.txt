@@ -1,0 +1,1 @@
+./bin/raja-perf.exe --outfile double-buffer --npasses 10 --sizespec extralarge --kernels JACOBI_1D JACOBI_2D HEAT_3D

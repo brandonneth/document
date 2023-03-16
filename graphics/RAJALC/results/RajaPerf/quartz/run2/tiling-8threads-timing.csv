@@ -1,0 +1,5 @@
+Kernel               , RAJA_OpenMP , Hand_Opt , LoopChain
+Lcals_HYDRO_2D       ,    7.059403 , 8.692267 ,  8.618806
+Polybench_HEAT_3D    ,    3.154075 , 8.587577 ,  8.639204
+Polybench_JACOBI_1D  ,    6.424070 , 5.394884 ,  3.553265
+Polybench_JACOBI_2D  ,    0.146681 , 0.160942 ,  0.159774

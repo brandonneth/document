@@ -1,0 +1,114 @@
+\documentclass{report}
+
+\usepackage{array} 
+\usepackage{comment}
+\usepackage{graphicx}
+\usepackage[T1]{fontenc}
+\usepackage{csquotes}
+\usepackage{balance}
+\usepackage{setspace}
+\usepackage[table]{xcolor}
+
+\usepackage{lstautogobble}
+\usepackage{subcaption}
+
+\usepackage{standalone}
+\usepackage{algorithmicx}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage{tikz}
+\newcommand\setrow[6]{
+  \setcounter{col}{1}
+  \foreach \n in {#1, #2, #3, #4, #5, #6} {
+    \edef\x{\value{col} - 0.5}
+    \edef\y{6.5 - \value{row}}
+    \node[anchor=center] at (\x, \y) {\n};
+    \stepcounter{col}
+  }
+  \stepcounter{row}
+}
+\newcounter{row}
+\newcounter{col}
+
+\usepackage{lineno}
+\linenumbers
+
+\usepackage[normalem]{ulem}
+
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+
+\usepackage{listings}
+\lstset{ %
+language=C++,                % choose the language of the code
+basicstyle=\ttfamily\footnotesize,       % the size of the fonts that are used for the code
+commentstyle = \color{ForestGreen},
+columns=fullflexible,
+numbers=left,                   % where to put the line-numbers
+numberstyle=\footnotesize,      % the size of the fonts that are used for the line-numbers
+stepnumber=1,                   % the step between two line-numbers. If it is 1 each line will be numbered
+numbersep=5pt,                  % how far the line-numbers are from the code
+%backgroundcolor=\color{codeBG3},  % choose the background color. You must add \usepackage{color}
+showspaces=false,               % show spaces adding particular underscores
+showstringspaces=false,         % underline spaces within strings
+showtabs=false,                 % show tabs within strings adding particular underscores
+frame=single,           % adds a frame around the code
+tabsize=2,          % sets default tabsize to 2 spaces
+captionpos=b           % sets the caption-position to bottom
+breaklines=true,        % sets automatic line breaking
+breakatwhitespace=false,    % sets if automatic breaks should only happen at whitespace
+keywordstyle=\color{blue},       % keyword style
+  %language=Octave,                 % the language of the code
+  otherkeywords={SearchVar,MV,TSS,tileExpr,Search,tFunc...},           % if you want to add more keywords to the set
+  numberstyle=\tiny\color{black}, % the style that is used for the line-numbers
+  rulecolor=\color{black},
+escapeinside={<@}{@>}
+} 
+\definecolor{ForestGreen}{RGB}{34,139,34}
+\newcommand{\todo}[1]{{\textcolor{red}{{\tt{TODO:}}\,\,#1 }}}
+\newcommand{\nc}[0]{\todo{cite}}
+\newcommand{\an}[1]{{\textcolor{blue}{Author's Note: #1}}}
+\newcommand{\ttt}[1]{{\texttt{#1}}}
+\usepackage{xspace}
+\newcommand{\FormatDecisions}[0]{{\textsc{FormatDecisions}}}
+\newcommand{\su}[1]{{#1$\times$}}
+\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}}
+
+\usepackage[subtle]{savetrees}
+\vbadness=18000
+
+\begin{document}
+
+%\chapter{Introduction}
+
+%\include{RAJALC.tex}
+
+%\include{FormatDecisions.tex}
+
+\include{SparseRAJA.tex}
+
+\chapter{Conclusion}
+
+We conclude with three avenues for future work.
+Here, we introduced support for format conversions among the space of dense, rectilinear permutation formats
+\footnote{The authors have been unable to find an existing name for this space of formats. We use \enquote{rectilinear} to distinguish from orderings that do not map linear threads of elements to consecutive memory, such as Z-orders or Morton orders. We use \enquote{permutation} to distinguish from the space's subset of lexicographic and colexicographic orders.}. 
+One avenue of future work would examine alternative dense formats, including Z-orders, Morton orders, tiled data formats, and SOA-AOS formats.
+This would require interface modifications to allow the specification of these orderings and implementation modifications to support those formats in RAJA.
+Similarly, another avenue of future work would examine extending this approach to sparse data and computations. 
+While this would require more significant modifications to the RAJA library to support the specification of sparse computations, such an approach could build on the symbolic iteration space description support introduced in Section~\ref{sec:SymbolicSegment}. 
+
+Beyond expanding the space of data formats the system can support, another direction for future research would examine support for accelerators like GPUs and FPGAs.
+Compared to CPU computing, programming systems for accelerators expect the programmer to take more responsibility for managing data movement.
+The \FormatDecisions{} interface could be extended to allow users to mark kernels for offloading while the underlying symbolic evaluation could be used to ensure all necessary data is accessible to the accelerator in a format that is performant for that system. 
+
+Finally, \FormatDecisions{} could be integrated with the loop schedule transformation framework of RAJALC. 
+This would enable the simultaneous optimization of both the schedule and the data layout, giving the programmer even greater control over the execution of their computations.
+Such an integration presents an interesting interface design problem in how to refer to the products of schedule transformations that may combine multiple loops into one. 
+
+
+\bibliographystyle{abbrv}
+\bibliography{dissertation.bib}
+
+\end{document}

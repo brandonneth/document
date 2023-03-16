@@ -1,0 +1,5 @@
+./bin/raja-perf.exe --npasses 10 --outfile fusion --sizefact 10 --sizespec extralarge --kernels ENERGY PRESSURE FDTD_2D GEN_LIN_RECUR
+
+./bin/raja-perf.exe --npasses 10 --outfile tiling --sizefact 10 --sizespec extralarge --kernels HYDRO_2D JACOBI_1D JACOBI_2D HEAT_3D
+
+

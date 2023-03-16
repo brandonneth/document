@@ -1,0 +1,6 @@
+Kernel, RAJA_OpenMP , ManuallyImplemented , LoopChain
+HYDRO_2D,       1.000 ,    1.014 ,     1.079
+HEAT_3D,       1.000 ,    0.863 ,     0.853
+JACOBI_1D,       1.000 ,    0.758 ,     0.758
+JACOBI_2D,       1.000 ,    0.439 ,     0.414
+FDTD_2D,       1.000 ,    1.075 ,     1.073

@@ -1,0 +1,5 @@
+Mean Runtime Report (sec.)  ,  ,  , 
+Kernel               , RAJA_OpenMP , Hand_Opt , LoopChain
+Polybench_HEAT_3D    ,    4.048695 , 3.916831 ,  3.329041
+Polybench_JACOBI_1D  ,    0.849597 , 0.695868 ,  0.813444
+Polybench_JACOBI_2D  ,    0.173269 , 0.164807 ,  0.163990

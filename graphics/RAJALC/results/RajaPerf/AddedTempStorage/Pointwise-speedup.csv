@@ -1,0 +1,4 @@
+Kernel, RAJA_OpenMP , ManuallyImplemented , LoopChain
+GEN_LIN_RECUR,       1.000 ,    1.213 ,     1.194
+ENERGY,       1.000 ,    2.346 ,     2.299
+PRESSURE,       1.000 ,    0.883 ,     0.878

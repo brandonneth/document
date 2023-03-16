@@ -1,0 +1,735 @@
+
+\chapter{Sparse Transformations}
+
+
+%Introduce sparse computations, existing approaches, and the constraints of the problem i'm solving
+\section{Introduction}
+
+
+
+Sparse Formats:
+\begin{itemize}
+\item Coordinate Storage
+\item Banded
+\item 
+\end{itemize}
+
+
+\section{A Dense Survey of the Sparse Literature}
+
+
+In this section, I aim to provide a somewhat detailed sketch of the development of sparse computation from modern computing's early beginnings to today.
+Here, I focus on a series of related questions.
+First, when and how did the notion of sparsity emerge?
+Second, how did developments in computing technology (architecture, storage systems, etc.) and program representation (languages) influence thinking about sparse computation?
+Third, where in the literature do we find the emergence of sparse \textit{tensors} in favor of sparse \textit{matrices}, and what factors caused this emergence? 
+I do not purport to definitively answer these questions, only to offer hypotheses based on patterns that emerged in my excavation.
+However, I believe that an historical engagement with the field offers deep insight into the open problems of today.
+
+\subsection{The Notion of \enquote{Sparsity}}
+
+Coming from an era when \enquote{computer} was a job title, the earliest work on computations on sparse data do not refer to them as such. 
+This considerably increases the challenge of reasoning about the ideas of the time, but there remain important anchor points. 
+
+Young's 1954 work developing iterative methods for elliptic PDEs~\cite{young1954iterative} presents the first elaboration of a sparsity property: nondescriptively called \textit{Property A}.
+It places constraints on the distribution of nonzeros in a square matrix: An $N \times N$ matrix has \textit{Property A} if there exist a 2-partition $S,T$ of the first $N$ integers such that if matrix entry $a_{i,j} \neq 0$, then $i=j$ or $i \in S \land j \in T$ or $i \in T \land j \in S$. 
+Examples are shown in Figure~\ref{propAExamples}.
+While Young does not discuss using the property to guide implementation, he does give estimated UNIVAC calculation times for different problem sizes.
+\begin{figure}[h]
+\begin{lstlisting}[caption={Entry pattern for $N=6,T=\{0,5\},S=\{1,2,3,4\}$ maximal \textit{Property A} matrix}]
+  * * * * * 0
+  * * 0 0 0 *
+  * 0 * 0 0 *
+  * 0 0 * 0 *
+  * 0 0 0 * *
+  0 * * * * *
+\end{lstlisting}
+\begin{lstlisting}[caption={Entry pattern for one $N=2,T=\{0\},S=\{1\}$ \textit{Property A} matrix},label={propAnonSym}]
+  0 0
+  * 0
+\end{lstlisting}
+\caption{Example nonzero patterns of \textit{Property A}. }
+\label{propAExamples}
+\end{figure}
+
+Like Young, Wilf~\cite{wilf1960almost} elaborates a matrix property that constrains the distribution of entries. 
+His \enquote{almost diagonal} matrices differ from a diagonal matrix by a matrix of rank one. 
+Formally, a matrix $A$ is almost diagonal if there exists a diagonal matrix $D$ and vectors $x$ and $y$ such that $A = D + xy^t$. 
+Like Property A, almost-diagonality suggests a specialized a sparse representation.
+$A$ is stored as three vectors, one for each of $D$, $x$, and $y$.
+Then, any access $A(i,j)$ could calculate its value on the fly.
+
+These use of these properties must be considered in the productive context of their development. 
+A computer was a person with advanced mathematical knowledge, almost exclusively a woman, who calculated at a desk. 
+Calculating ballistics trajectories involves dozens of changing variables to track, including the step size; multiple phases of computation; and error-checking~\cite{proof, csc296reading}. 
+Matrix properties are valuable because they make working with the data easier, and computers experienced this benefit viscerally.  
+
+
+
+
+
+
+Wilson~\cite{wilson1959solution} gives the first discussion of implementing sparse computations on electronic computers, detailing their use of parameterized subroutines for common matrix operations. 
+At this point, the word \enquote{sparse} is still not in use, and littel discussion of the representation of data is given.\todo{what is the discussion?}
+If Wilson's work is any indication, data representation was likely specialized to each application differently. 
+
+
+
+
+
+
+It is here that the notion of a \enquote{sparse matrix} first appears, still considered in an abstract mathematical context. 
+Two 1962 contributions are key.
+First is Harary's work using graph theory to tackle the problem of matrix inversion~\cite{harary1962graph}.
+We see the continuation of this approach even today, where graph theoretical concepts guide parallelization and other optimizations of sparse codes.
+\todo{does he say sparse?}
+The second contribution is related, where Dulmage and Mendelsohn consider the inversion of \enquote{sparse matrices}~\cite{dulmage1962inversion}.
+Although essentially an addendum to Harary's work, it is the earliest reference I can find of a matrix being sparse.
+They characterize sparsity as having a large proportion of zero entries.
+
+While an reasonable definition for sparsity, later works refine sparsity to be related to the distribution or structure of nonzero entries~\cite{duff1977survey}.
+My adherence to the refined definition is evident in my inclusion of almost diagonal matrices in this discussion. 
+To elaborate, consider the almost diagonal matrix defined by $D=\begin{pmatrix}
+  1 & 0 & 0 & 0\\
+  0 & 1 & 0 & 0\\
+  0 & 0 & 1 & 0 \\
+  0 & 0 & 0 & 1
+\end{pmatrix}$,
+$x=\begin{pmatrix}
+  1 \\
+  1 \\
+  1 \\
+  1
+\end{pmatrix}$, 
+and $y=\begin{pmatrix}
+  1 \\
+  1 \\
+  1 \\
+  1
+\end{pmatrix}$.
+The almost diagonal matrix constructed by these three components has no zero entries: $A=\begin{pmatrix}
+  2 & 1 & 1 & 1 \\
+  1 & 2 & 1 & 1 \\
+  1 & 1 & 2 & 1 \\
+  1 & 1 & 1 & 2
+\end{pmatrix}$.
+However, $A$'s representation can be \textit{compressed} due to its structure, using less overall storage than its array representation.
+
+At this point in history, using programming language abstractions at all was new. 
+Work on the first LISP interpreter was wrapping up\cite{mccarthy1978history}, ALGOL's first implementation is turning two\cite{proof}, and the FORTRAN compiler was still four years from its first ANSI standardization\cite{proof}. 
+But language abstractions are a powerful thing, and soon researchers began to use them to not only describe algorithms, but data.
+
+Alongside the formalization of American Standard Fortran, we see the rise of a class of matrix formats that will receive at the time historic attention: banded formats.
+While simpler banded formats were in use at the time, Jennings~\cite{jennings1966compact} provides influential modifications in his 1966 description of compact banded storage (CBS).
+CBS is a symmetric format that does best for matrices with nonzero entries concentrated around the main diagonal, a property that could be maximized with permutation algorithms~\cite{alway1965algorithm}.
+
+In this format, each row is stored from its first nonzero entry up to the diagonal entry. 
+Then, a second indexing array is used to identify the positions of the diagonal entries to the matrix.
+Listing~\ref{compactDiagonal} shows an example of this storage format in a similar style as is presented in Jennings work.
+Note the difference between this representation and that given in the earlier, pre-FORTRAN works. 
+A mathematical description has given way to one that shows FORTRAN arrays. 
+
+
+\begin{figure}
+\begin{lstlisting}[caption={A symmetric matrix and its compact diagonal storage representation},label={compactDiagonal}]
+A:
+7 6 9 0 0 0
+6 3 0 0 0 0
+9 0 4 5 0 2
+0 0 5 9 0 0
+0 0 0 0 6 0
+0 0 2 0 0 1
+
+V:
+7  6 3  9 0 4  5 9  6  2 0 0 1
+
+I:
+0    2      5    7  8        12
+\end{lstlisting}
+\end{figure}
+
+
+
+\subsection{See You at \sout{Woodstock} IBM Watson Research Center}
+
+Three interrelated developments ground the time around 1970: IBM's circuit design team, sparse computation symposia, and changes in computer manufacturing. 
+
+\todo{IBM's circuit design team}
+In 1966, IBM formed a research team\footnote{Ralph Willoughby, Robert Brayton, Fred Gustavson, Gary Hachtel, and Werner Liniger.} to focus on the problem of computational circuit design~\cite{willoughby1971sparse}.
+The sparse computations that arose from this problem domain tended to have a fixed, but arbitrary sparse structure, meaning that traditional banded storage schemes were not as beneficial.
+A more general sparse format was needed, one that would become the \textit{de facto} standard for decades to come.
+
+The origins of the compressed sparse row format are contested, but three sources stand out. 
+\todo{Chang 1968}, \todo{Tinney and Bonneville Power}
+Before elaborating the compressed sparse row format, Gustavson~\cite{gustavson1972some} destills two \enquote{rules} for the design of computational algorithms that are especially useful for sparse computations. 
+First, shape the algorithm to fit the functional environment of the computer. 
+Second, specialize the algorithm based on the aspects of the problem that do not change.
+Gustavson takes the problem of storing a sparse matrix and applies his two rules. 
+He uses the first rule to motivate his description of a general sparse format that we know today as compressed sparse row. 
+Listing~\ref{compressedSparseRow} reproduces the example given by Gustavson.
+Then, he uses the second rule to guide specialized implementations of solvers for the format. 
+\begin{figure}
+\begin{lstlisting}[caption={Example of compressed sparse row storage given by~\cite{gustavson1972some}},label=compressedSparseRow]
+
+7 0 -3 0 -1 0
+2 8 0 0 0 0
+0 0 0 1 0 0 
+-3 0 0 5 0 0
+0 -1 0 0 4 0 
+0 0 0 -2 0 6
+
+IA = 1 4 6 7 8 11 13
+JA = 1 3 5 1 2 3 1 4 2 5 4 6
+AN = 7 -3 -1 2 8 1 -3 5 -1 4 -2 6
+\end{lstlisting}
+\end{figure}
+
+
+In the years following the formation of the IBM research team, symposia and conferences on sparse applications occured almost annually. 
+The first instance appears to be the September 1968 symposium held at the IBM Thomas J. Watson Research Center, about halfway between New York City and the following year's Woodstock Music Festival. 
+While a copy of its proceedings has proved difficult to acquire, it provided a crucial venue for practitioners in a variety of disciplines to discuss their use of sparse matrix approaches.
+Two subsequent symposia follow soon after, in April 1970 at Oxford and again at the IBM Research Center in September 1971.
+These conferences were the central venues for publications on sparse applications at the time, and nearly all relevant work was published in one of the three proceedings.
+
+Three contributions to the Oxford conference are of special note: Larcombe's list processing approach, Jenning and Tuff's discussion of common storage schemes, and Buchet's notes on designing programming packages.
+When considered alongside the format representations seen thus far, Larcombe's~\cite{larcombe1971list} list structures clarify how the choice of programming language affects the reprsentation of sparse data.
+Figure~\ref{listStructure} reproduces the list structure format presented by Larcombe. 
+The savvy reader may notice similarities between this representation and the S-expressions of the LISP programming language.
+Such a reader would be correct, as Larcombe notes that the representations he proposes are difficult to implement in either COBAL or FORTRAN. 
+His work points to the importance of considering language-level constraints when designing support for sparse computations.
+\begin{figure}
+  \todo{scan figures from Larcombe 1971}
+  \caption{Reproduction of sparse matrix list structer from~\cite{larcombe1971list}}
+  \label{listStructure}
+\end{figure}
+
+Jenning and Tuff~\cite{jennings1971direct} present what I believe to be the first comparison of different sparse formats and storage technologies. 
+Here, we see the storage technology choice impacting parameters of the sparse formats, for example how to break up large matrices onto multiple stores in the most efficient manner. 
+
+Buchet~\cite{buchet1971take} compares the performance of different computing systems in what could possibly considered the first sparse computation performance portability study. 
+He shows the breakdown of the execution time across the computation's component and discusses techniques for reducing the computation and I/O time. 
+While we do not yet see discussion of how best a sparse computations or matrices can be represented, Buchet considers the tradeoffs of what would today be described as Array-of-Structs (AoS) and Struct-of-Arrays (SoA) formats.
+
+Finally, the Oxford conference concluded with the contribution of IBM's team lead Willoughby~\cite{willoughby1971sparse}. Specifically focused on the hardware limitations on feasible problem sizes, he calls for architecture recommendations that may strike a modern reader as familiar: \enquote{Memory development heads the list}. 
+Already, sparse computations are bottlenecked by the time it takes to bring the necessary data into the CPU. 
+
+The 1971 symposium continues many of these threads, and foreshadows many of the more recent contributions that are key to understanding the discipline.
+In addition to Gustavson's description of the compressed sparse row format discussed above, Hoernes~\cite{hoernes1972generalized} makes a connection between sparse matrices and databases that will reappear around the new millenium, and Rheinboldt, Basili, and Mesztenyi~\cite{rheinboldt1972graal} detail a domain specific language (DSL) for graph algorithms.
+
+\todo{concluding paragraph wrapping up this era}
+
+\subsection{Cray, C(++), Packages}
+
+With the groundwork set by the contributor of the late 1960s and early 1970s, there was a distinct shift towards standardized representations of sparse computations. 
+
+A year after the introduction of the Cray-1~\cite{normand2010first}, Eisenstat's team at Yale released a collection of FORTRAN subroutines for the direct solution of linear systems known as the Yale Sparse Matrix Package~\cite{eisenstat1977yale,eisenstat1977yale2}.
+In this work, we see for the first time discussion of the interrelation of the package components rather than specific details of algorithmic implementation.
+Later development added support for conjugate-gradient methods~\cite{eisenstat1984new}. 
+While seemingly small--containing only three drivers and five subroutines--the package allows different \enquote{paths} through the algorithms that change the storage and computation requirements. 
+This increases the flexibility of the package by enabling specialization to the problem being implemented.
+
+Packages were also available for other types of sparse computations, such as iterative methods in ITPACK~\cite{kincaid1982algorithm}.
+Consisting of subroutines for seven different iterative methods, we see a standardized FORTRAN interface for both matrix input and subroutine calls. 
+Another package, SPARSPAK~\cite{chu1980user,george1984new}, uses a novel matrix input interface to abstract the details of matrix storage away from the user.
+Rather than passing pre-constructed CSR data structures into the subroutines, the user begins by declaring the nonzero structure of their matrix. 
+SPARSPAK contains routines for declaring the coordinates of nonzero entries one at a time, row by row, as submatrices, or as an entire matrix.
+After the sparse structure has been provided, the user inputs the entry values in a corresponding fashion. 
+While SPARSPAK only uses a single storage format for the sparse data, this is the first \textit{interface} that does not refer to the storage format.
+
+Marsten's XMP linear programming library~\cite{marsten1981design} makes several important contributions to the discourse on sparse computations.
+The design and implementation of XMP proceeds from eight characteristics Marsten identifies as key to experimental libraries. 
+The three most relevant to this inquiry are readability, hidden data structures, and modularity/hierachical structure. 
+These characteristics are often in tension with one another. 
+For example, modularity/hierachical structure led to the goal of enabling any routine in the library to be called by user code.
+This means that each routine must only operate on its explicit arguments, requiring high-level routines to have parameters for all of the routines they use (up to 41 parameters for the XPRIML routine).
+Given the impact of such long function signatures on readability, it is no wonder that more than 50\% of the XMP code base is comments.
+The design of XMP imposes another valuable constraint: any routine that accesses the problem data must never access the data structures directly. 
+While the library stores all data in compressed sparse column (CSC) format, this constraint enables the use of alternative storage formats, as long as they support the data access interface used by XMP.
+
+Alongside the development of standardized packages/libraries, this era is also marked by a consideration of the new computing hardware of the time.
+\todo{1982 sparse matrix symposium, CRAY-1 and FPS-164 nad multiprocessors generally}
+
+\todo{architectural experimentation}
+\cite{duff1982experience}
+\cite{cleveland1987progress}
+
+
+\todo{round 2 of libraries}
+\cite{dongarraxz1994sparse}
+Developed alongside the Harwell/Boeing collection of sparse matrices~\cite{duff1989sparse}Saad's SPARSKIT~\cite{saad1990sparskit} marks a shift in the library ecosystem towards supporting many different sparse formats. 
+With support for a whopping twelve sparse storage formats, SPARSKIT also includes routines to convert data between different formats. 
+However, this freedom is not unlimited, as there are only 23 conversion routines out of the 132 possible combinations. 
+And while SPARSKIT supports many different sparse representations, its computation subroutines require the data be in CSR format. 
+
+
+
+
+\todo{new formats}
+\cite{pothen1990computing}
+\cite{montagne2004optimal}
+\cite{shahnaz2005review}
+
+\todo{matlab}
+\cite{gilbert1992sparse}
+- matrix is only data type in matlab
+- implemented in C
+- broader range of operations than Fortran packages (add, transpose, etc)
+- matrices are stored by columns. CSC
+- sparsity is generally not visible to the user
+\cite{kawabata2004matlab}
+- translates annotated matlab into fortran 90
+- three representations
+- statements are written as matrix operations (A = x * C + B) rather than loops
+\cite{bader2008efficient}
+- proposes coordinate storage
+- thinking about when factored tensors can be more compactly stored as components than as a full tensor.
+- this connects to the property A work.
+
+\todo{parallelization} 
+\cite{ogielski1993sparse}
+\cite{erhel1995parallel}
+\cite{ujaldon1996parallelization}
+\cite{catalyurek1999hypergraph}
+\cite{filippone2000psblas}
+
+\todo{start of tensor work}
+\cite{bouaricha1994tensor} 
+\cite{bouaricha1999tensor}
+\cite{lin2002efficient}
+\cite{kolda2008scalable}
+
+\todo{alternative programming styles}
+\cite{irwin1997aspect}
+\cite{hackbusch1999sparse}
+\cite{ashcraft1999spooles}
+
+
+\subsection{The Emergence of Sparse Compilation}
+
+The use of domain-specific languages (DSLs) and compilers for sparse computations can be found as early as the 1970s~\cite{calahan1971description,mchugh1974simpl}.
+However, these pioneering attempts are better categorized as inquiries into early compiler technologies that true sparse matrix computation languages or compilers. 
+In the 1990s, DSL and compiler-based approaches to sparse computations began to emerge in earnest.
+Bik and Wijshoff's works~\cite{bik1993compilation, bik1993automatic,bik1996automatic} lay important groundwork for the use of compilers to optimize sparse computations.
+Their approach centers a description of the computation that to the programmer is essentially indistinguishable from a dense loop nest. 
+Then, after the user adds annotations to identify which data is sparse, their three-phase compiler takes over.
+In the first phase, statements that use sparse matrices are split into a two-way IF statement that separates operations on entries from those on zeroes. 
+These IF statements are optimized to remove unnecessary operations, such as summing zeroes.
+Additionally, the iteration space is restructured to potentially eliminate iterations that work on zeroes in the matrices. 
+In the second phase, a  data structure is selected based on the access patterns used throughout the computation. 
+In the final phase, the code is converted in such a way that it now operates on the selected data structure.
+
+The Bernoulli compiler research group continued this line of work, inspired by concepts from relational database systems. 
+To seperate the description of the data from that of the computation, they design two abstractions.
+The first is a low-level description of sparse formats, given in terms of the access methods and properties~\cite{kotlyar1997compiling}. 
+These descriptions encode information about how the data can be traversed. 
+For example, the description of CSR format encodes the fact that column indices can only be traversed across a row. 
+The second abstraction is for describing computations.
+Programs are written as if they operate on dense data, then specialized instantiations are synthesized based on the format of the data.
+Part of this instantiation is based on reasoning about the computations as relational queries~\cite{kotlyar1997relational} to generate efficient code. 
+While part of their system is implemented in C++, this component is essentially \enquote{glue} to hold together the abstractions and the restructuring compiler~\cite{mateev2000bernoulli}.
+They indicate that their approach cannot be done in the C++ STL alone because of the need to restructure the dense code at a deep level~\cite{ahmed2000framework}.
+\begin{figure}[h]
+\begin{lstlisting}[caption={SpMV written using Bernoulli group representation.}]
+  
+\end{lstlisting}
+\end{figure}
+\todo{remaining early compilation approaches}
+\cite{pugh1999sipr}
+\cite{kessler1999sparamat}
+
+
+\todo{R}
+\cite{koenker2003sparsem}
+
+
+
+
+\subsection{New Millenium, New Processors}
+
+\todo{gpu work}
+\cite{bolz2003sparse}
+\cite{bell2009implementing}
+\cite{williams2007optimization}
+\cite{baskaran2009optimizing}
+
+
+Sparse data representation's interconnection with computer architecture is apparant more recently with the rise of FPGA coprocessors. 
+Plenty of work has focused on how to convert parts of sparse algorithms into specialized hardware~\cite{elgindy2002sparse,zhuo2005sparse,gregg2007fpga,prasanna2007sparse,jain2020domain,kapre2009parallelizing}, and this has led researchers to consider how best to organize the data for specialized coprocessors. 
+The first is a slight modification to BCSR, where the full matrix is divided into strips along the rows, then blocked and stored in CSR format~\cite{sun2007sparse}. 
+This allows computations on large matrices to be broken into smaller pieces that still fit with the specialized processor design.
+Because FPGAs can leverage more bit-level manipulations than traditional CPUs, a number of modified bit-vector formats have also been developed for use in FPGAs. 
+While bit-map storage is not new on its own, Kestur, Davis, and Chung introduce two new storages formats that compress the bit-maps even further~\cite{kestur2012towards}.
+They are reminiscent of the compressed banded storage format seen in the early days of sparse computations.
+Finally, Fowers et al~\cite{fowers2014high} present a new encoding that alieviates some of the problems of CSR.
+They begin by noting that by parallelizing the dot product of a SpMV kernel, CSR introduces complexity due to the variably-sized reduction operations.
+Their replacement, Condensed Interleaved Sparse Representation (CISR), ensures that (1) all entries from each row are processed by the same channel and (2) the channel knows ahead of time how many elements will be summed.
+By moving the row scheduling into the format, they reduce the complexity of the circuit design.
+
+
+
+
+
+
+\todo{SPARSITY}
+\cite{im2001optimizing}
+\cite{im2004sparsity}
+
+\todo{tuning}
+\cite{vuduc2005oski}
+
+
+\todo{java}
+\cite{chang1997towards}
+\cite{lujan2005storage}
+
+
+\todo{inspector executor pattern}
+\cite{fu1996run}
+
+
+
+\subsection{Where We Stand Today}
+\todo{TACO}
+
+
+
+
+
+The SPF-based approach is based on the polyhedral model, which represents computations as sets and relations of integer polyhedra. 
+In this framework, schedule and data transformations become affine transformations on the representations of the iteration and data spaces.
+The sparse polyhedral framework extends this model to support representating and transforming sparse computations, whose iteration and data spaces are non-affine~\cite{strout2016approach}. 
+But even with the ability to represent computations at compile time, many optimizing transformations rely on information only available at runtime, namely the sparsity structure of the data.
+Thus, inspector-executor code patterns are generated, where inspector code analyzes the necessary runtime information and uses that to make final changes to the data or computation to enhance the performance of the executor.
+Additionally, because transformations are represented as mappings of the data and iteration spaces, they are highly composable. This enables the chaining of multiple optimizations~\cite{ahmad2017optimizing} and even automatic conversion between sparse formats by composing mappings from sparse to dense data spaces~\cite{popoola2023code}. 
+SPF is also extensible. By representing different sparse formats as constraints on sparse polyhedra, Zhou et al.~\cite{zhao2022polyhedral} decouple the data layout from the computation. 
+This enables the representation of a broader class of sparse formats than TACO and the generation of code to co-iterate over multiple sparse tensors.
+Although these approaches generate performant code, they lack an approachable, productive interface for specifying computations and transformations. 
+While addressing this shortcoming is not the central focus of this chapter, part of the goals of my contribution is to develop an interface that could be used as an interface to SPF formats and transformations.
+
+One thing these approaches share is their use of a specialized compiler pipeline for converting from the programmer's description of the computation into an efficiently executing binary. 
+I propose an alternative approach that, like the preceeding chapters, builds the capability to efficiently represent and execute sparse computations directly into performance portability libraries like RAJA. 
+While my approach removes the need for additional build stages and more software dependencies, the problem of supporting sparse computations in a library presents additional challenges.
+These challenges present constraints in two main areas: how data is declared and accessed and how computations are specified and executed. 
+Some constraints, like those preventing the code generation commonly found in compiler-based techniques, are a product of the library approach in general.
+Others, like those dictating the syntactic form of computation specifications, are a product of the specific host library in which the approach is applied.
+\todo{2x2 table on the design constraints}
+
+
+
+
+
+
+%concretize the problem 
+\section{Case Study Computations}
+
+Three sparse computations will form the case studies for this chapter: sparse matrix vector multiplication (SpMV), sparse Gauss-Seidel iterative solve (GauSei), and Incomplete sparse Cholesky Factorization (InCholFact). 
+
+We begin with a discussion of their dense implementations.
+Figure~\ref{DenseMV} shows the dense implementation of a matrix-vector multiplication.
+While a relatively simple computation, matrix-vector multiplication is a foundational building block for a large swath of computations.
+Figure~\ref{DenseGauSei} shows a dense implementation of the Gauss-Seidel method for solving a system of linear equations.
+Considerably more complex than the matrix-vector multiplication, this computation exhibits both imperfect nesting (lines 7 and 13), and conditional statements within the loop (lines 9-11). 
+Furthermore, unlike matrix-vector multiplication, where the only constraint on the execution schedule is the reduction into the \verb.y. View, Gauss-Seidel is restricted by the dependence between the read on line 10 and the write on line 13. 
+Figure~\ref{DenseInCholFact} shows a dense implementation of the incomplete Cholesky factorization. 
+Here, we see multiple loops within an outer loop (line 6-10 and 11-17), conditional statements within the loop bodies (lines 7-9 and 13-15), and function calls within the loop nest (line 5).
+
+\begin{figure}
+\begin{lstlisting}[caption={C-like implementation of dense matrix vector multiplication.},label=DenseMV]
+View<2> A(Ni,Nj);
+View<1> x(Nj), y(Ni);
+
+for(int i = 0; i < Ni; i++) {
+  for(int j = 0; j < Nj; j++) {
+    y(i) += A(i,j) * x(j);
+  }
+}
+\end{lstlisting}
+\end{figure}
+\begin{figure}
+\begin{lstlisting}[caption={C-like implementation of dense Gauss-Seidel iterative solve.},label=DenseGauSei]
+View<2> A(N,N);
+View<1> b(N);
+View<1> phi(N) = initial_guess;
+
+while (!has_converged()) {
+  for(int i = 0; i < N; i++) {
+    temp = 0.0;
+    for(int j = 0; j < N; j++) {
+      if (j != i) {
+        temp += A(i,j) * phi(j);
+      }
+    }
+    phi(i) = (b(i) - temp) / A(i,i);
+  }
+}
+\end{lstlisting}
+\end{figure}
+\begin{figure}
+\begin{lstlisting}[caption={C-like implementation of dense incomplete Cholesky factorization},label=DenseInCholFact]
+
+View<2> A(N,N);
+
+for(i0 = 0; i0 < N; i0++) {
+  A(i0,i0) = sqrt(A(i0,i0));
+  for(i1 = i0+1; i1 < N; i1++) {
+    if (A(i1,i0) != 0) {
+      A(i1,i0) /= A(i0,i0);
+    }
+  }
+  for(i1 = i0+1, i1 < N; i1++) {
+    for(i2 = i1; i2 < N; i2++) {
+      if (A(i2,i1) != 0) {
+        A(i2,i1) -= A(i2,i0) * A(i1,i0);
+      }
+    }
+  }
+}
+
+//fill upper triangle with zeroes
+for(i0 = 0; i0 < N; i0++) {
+  for(i1 = i0+1; i1 < N; i1++) {
+    A(i0,i1) = 0;
+  }
+}
+\end{lstlisting}
+\end{figure}
+
+Next, we consider implementations of these computations for sparse data stored using a row-major coordinate (COO) storage.
+For SpMV, this code is straightforward, shown in Listing~\ref{COOMV}.
+For each of the nonzero entries in \verb.A., we use its row and column indices to update the appropriate element of \verb.y..
+However, for the other two computations, the process is not as straightforward.
+Where in the SpMV case the two loop nests are collapsed into one, how should the code between the two loops be incorporated? 
+In GauSei, where should the implementation reset the temporary? 
+How do we know when to update \verb.phi.?
+
+
+\begin{figure}
+\begin{lstlisting}[caption={C-like implementation of sparse matrix vector multiplication for row-major COO.},label=COOMV]
+SparseView<2, COO> A(Ni,Nj);
+View<1> x(Nj), y(Ni);
+
+for(int idx = 0; idx < A.nnz; idx++) {
+  int i0 = A.rows(idx);
+  int i1 = A.cols(idx);
+  y(i0) += A.vals(idx) * x(i1);
+}
+\end{lstlisting}
+\end{figure}
+\begin{figure}
+  \begin{lstlisting}[caption={C-like implementation of sparse Gauss-Seidel iterative solve for row-major COO.},label=DenseGauSei]
+  SparseView<2,COO> A(N,N);
+  View<1> b(N);
+  View<1> phi(N) = initial_guess;
+  
+  while (!has_converged()) {
+    for(int idx = 0; idx < A.nnz; idx++) {
+
+    }
+    for(int i = 0; i < N; i++) {
+      temp = 0.0;
+      for(int j = 0; j < N; j++) {
+        if (j != i) {
+          temp += A(i,j) * phi(j);
+        }
+      }
+      phi(i) = (b(i) - temp) / A(i,i);
+    }
+  }
+  \end{lstlisting}
+  \end{figure}
+  \begin{figure}
+  \begin{lstlisting}[caption={C-like implementation of sparse incomplete Cholesky factorization for row-major COO.},label=COOInCholFact]
+  
+  View<2> A(N,N);
+  
+  for(i0 = 0; i0 < N; i0++) {
+    A(i0,i0) = sqrt(A(i0,i0));
+    for(i1 = i0+1; i1 < N; i1++) {
+      if (A(i1,i0) != 0) {
+        A(i1,i0) /= A(i0,i0);
+      }
+    }
+    for(i1 = i0+1, i1 < N; i1++) {
+      for(i2 = i1; i2 < N; i2++) {
+        if (A(i2,i1) != 0) {
+          A(i2,i1) -= A(i2,i0) * A(i1,i0);
+        }
+      }
+    }
+  }
+  
+  //fill upper triangle with zeroes
+  for(i0 = 0; i0 < N; i0++) {
+    for(i1 = i0+1; i1 < N; i1++) {
+      A(i0,i1) = 0;
+    }
+  }
+  \end{lstlisting}
+  \end{figure}
+
+Figures~\ref{DenseMV} and~\ref{SparseMV} show C-like implementations of the SpMV kernel using dense and sparse data formats, respectively.
+Consider the extent to which the representations of the computations depend on the selected data format.
+In the sparse implementation, the data format of \verb.A. changes not only the access to \verb.A., but also the bounds of the inner loop and even the access to the other data in the computation (\verb.x.).
+All parts of the computation description have been tied up with the format of just one of the arrays.
+This means that changes to the format of \verb.A. will require modifying nearly all parts of the computation, significantly reducing the flexibility of the code. 
+
+
+
+
+
+\begin{figure}
+\begin{lstlisting}[caption={C-like implementation of sparse matrix vector multiplication using compressed sparse row (CSR) format.}, label=SparseMV]
+SparseView<2,CSR> A(Ni,Nj);
+View<1> x(Nj);
+View<1> y(Ni);
+
+for(int i = 0; i < Ni; i++) {
+  startIndex = A.rowptr(i);
+  endIndex = A.rowptr(i+1);
+  for(int j = startIndex; j < endIndex; j++) {
+    y(i) += A.values(j) * x(A.col(j));
+  }
+})
+\end{lstlisting}
+\end{figure}
+\begin{figure}
+\begin{lstlisting}[caption={RAJA implementation of dense matrix vector multiplication.},label=RAJADenseMV]
+View<2> A(Ni,Nj);
+View<1> x(Nj);
+View<1> y(Ni);
+
+using POLICY = KernelPolicy<
+  statement::For<0,loop_exec,
+	  statement::For<1,loop_exec,
+		  statement::Lambda<0>
+		>
+	>
+>;
+
+auto seg1 = RangeSegment(0,Ni);
+auto seg2 = RangeSegment(0,Nj);
+auto segs = make_tuple(seg1, seg2);
+
+auto lam = [&](auto i, auto j) {
+  y(i) += A(i,j) * x(j);
+};
+
+auto knl = make_kernel<POLICY>(segs, lam);
+knl();
+\end{lstlisting}
+\end{figure}
+
+
+\section{Design Overview}
+
+With some relevant computations and their characteristics in mind, I now provide an overview of the designed system.
+First, we have the interface for representing sparse data. 
+We limit to a small set of sparse storage formats based on coordinate storage and compressed sparse row.
+Second, we have the interface for representing a sparse computation.
+This interface is based on the existing interface for representing dense computations.
+Because the interface for sparse data is format-agnostic, the representation of a sparse computation looks almost identical to its dense counterpart.
+As with dense codes, the programmer provides an iteration space tuple, an execution schedule, and lambdas to represent the statements within the loops.
+Using the access information gathered through symbolic evaluation, the iteration space is sparsified and the data is prepared for efficient traversal.
+Third, we have the interface for selecting / changing data formats for the computation. 
+This interface is similar to that of \FormatDecisions, but supports sparse data formats.
+Finally, we have computation execution, which traverses the sparse iteration space and runs the computation. 
+
+While the design of the programmer's interface is relatively straightforward, its implementation presents numerous challenges.
+
+\section{Design}
+
+
+
+
+
+
+
+This section considers the decisions that are part of designing the sparse interface. 
+I break the design down into four components.
+The first component delimits the space of computation and data.
+The second describes how programmers specify their computation, as well as the class of computations the interface supports.
+The third describes how the runtime reduces the dense iteration space to just the points with nonzero data. 
+The fourth describes how we iterate through sparse the data during kernel execution.
+
+\subsection{Supported Sparse Formats}
+
+Bootstrapping, I begin with a limited class of sparse tensors.
+In analogy to the permuted layouts of RAJA's dense Views, consider the set of coordinate storage formats with different orderings of the coordinate entries.
+I will refer to this set of formats as permuted coordinate storage (PCOO).
+We can uniquely identify these formats with the permutation of their dimensions.
+
+Consider next the two-dimensional sparse storage formats compressed sparse row (CSR) and compressed sparse column (CSC). 
+Compare these formats with the $(0,1)$ and $(1,0)$ PCOO formats.
+CSR compresses dimension zero and uses it to access dimension one, while CSC compresses dimension one and uses it to access dimension zero. 
+
+A $>2$-dimensional PCOO format can be compressed in a similar manner by compressing the outermost dimension of the format. 
+Each PCOO format only has one outermost dimension, so these compressed permuted coordinate (CPCOO) storage formats can also be identified with the permutation of their indices. 
+CSR is the same as $CPCOO_{0,1}$ and CSC as $CPCOO_{1,0}$.
+These two classes of formats, PCOO and CPCOO, are where I begin the design. 
+
+\subsection{Supported Computation Space}
+
+Constraints
+\begin{itemize}
+	\item Conditional statements within loop bodies must not contain View accesses in their conditional expression.
+	\item View indexing expressions must be lone iterators rather than affine expressions of the iterators, as in previous chapters.
+	\item All writes to sparse Views must be updates, not insertions of new nonzeros.
+\end{itemize}
+
+
+
+\subsection{Computation Interface}
+
+The driving concern for the interface is that the details of which sparse formats the Views are stored in should be abstracted out of the computation description as much as possible. 
+This means that the description of a sparse computation should look very similar to that of a dense computation. 
+
+I introduce a new computation wrapper type, \verb.SparseKernelWrapper. to visually indicate that the computation should consider the sparsity of the data. 
+Like the original \verb.KernelWrapper. type, I also introduce a \verb.make_sparse_kernel. function for creating sparse computation objects. 
+
+
+
+\begin{figure}
+\begin{lstlisting}
+
+\end{lstlisting}
+\end{figure}
+
+
+
+\subsection{Sparsifying the Iteration Space}
+
+Once the computation object has been created, the sparsity of its data must be used to reduce the iteration space to only the points where nonzero datapoints exist.
+My approach proceeds in two phases: a symbolic representation phase and a execution phase. 
+
+
+\begin{figure}
+\begin{lstlisting}[caption={Algorithm to sparsify iteration space based on access to SparseView}]
+haveCompressed = false;
+compressedDim = -1;
+for nest in nesting:
+	if nest not in access:
+		sparseSegs[nest] = segs[nest];
+	else if haveCompressed:
+		idx = access.indexOf(nest);
+	sparseSegs[nest] = segs[nest] & view.dense_by(idx, compressedDim);
+	else:
+		idx = access.indexOf(nest);
+		sparseSegs[nest] = segs[nest] & view.compressed(idx);
+		haveCompressed = true;
+		compressedDim = idx;
+
+return sparseSegs;
+\end{lstlisting}
+\end{figure}
+
+
+\subsection{Efficient Iteration Through Data}
+
+
+\section{Implementation}
+
+\section{Evaluation}
+
+\section{Discussion}
+
+\section{Conclusion}
