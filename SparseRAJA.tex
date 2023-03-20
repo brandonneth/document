@@ -63,7 +63,7 @@ These use of these properties must be considered in the productive context of th
 A computer was a person with advanced mathematical knowledge, almost exclusively a woman, who calculated at a desk. 
 Calculating ballistics trajectories involves dozens of changing variables to track, including the step size; multiple phases of computation; and error-checking~\cite{proof, csc296reading}. 
 Matrix properties are valuable because they make working with the data easier, and computers experienced this benefit viscerally.  
-
+\todo{point is: Its not discussed because these men did not have to deal with it.} 
 
 
 
@@ -72,9 +72,6 @@ Matrix properties are valuable because they make working with the data easier, a
 Wilson~\cite{wilson1959solution} gives the first discussion of implementing sparse computations on electronic computers, detailing their use of parameterized subroutines for common matrix operations. 
 At this point, the word \enquote{sparse} is still not in use, and littel discussion of the representation of data is given.\todo{what is the discussion?}
 If Wilson's work is any indication, data representation was likely specialized to each application differently. 
-
-
-
 
 
 
@@ -218,7 +215,7 @@ In addition to Gustavson's description of the compressed sparse row format discu
 
 \todo{concluding paragraph wrapping up this era}
 
-\subsection{Cray, C(++), Packages}
+\subsection{Cray, C(++), and Libraries}
 
 With the groundwork set by the contributor of the late 1960s and early 1970s, there was a distinct shift towards standardized representations of sparse computations. 
 
@@ -253,21 +250,28 @@ Alongside the development of standardized packages/libraries, this era is also m
 \cite{duff1982experience}
 \cite{cleveland1987progress}
 
+\todo{C++}
+\cite{dongarraxz1994sparse}
 
 \todo{round 2 of libraries}
-\cite{dongarraxz1994sparse}
+
 Developed alongside the Harwell/Boeing collection of sparse matrices~\cite{duff1989sparse}Saad's SPARSKIT~\cite{saad1990sparskit} marks a shift in the library ecosystem towards supporting many different sparse formats. 
 With support for a whopping twelve sparse storage formats, SPARSKIT also includes routines to convert data between different formats. 
 However, this freedom is not unlimited, as there are only 23 conversion routines out of the 132 possible combinations. 
 And while SPARSKIT supports many different sparse representations, its computation subroutines require the data be in CSR format. 
+Included in the formats is one the author describes a year prior: Jagged Diagonal (JAD)~\cite{saad1989}.
+Later teams developed a modification to JAD, Transposed Jagged Diagonal Storage (TJDS) that reduces the storage overhead for the format~\cite{montagne2004optimal}.
 
 
-
-
-\todo{new formats}
-\cite{pothen1990computing}
-\cite{montagne2004optimal}
 \cite{shahnaz2005review}
+
+
+\todo{Sparse Matrix Collections}
+\cite{duff1989sparse}
+\cite{floridasparsematrixsuite}
+\cite{splatt}
+
+
 
 \todo{matlab}
 \cite{gilbert1992sparse}
@@ -285,12 +289,26 @@ And while SPARSKIT supports many different sparse representations, its computati
 - thinking about when factored tensors can be more compactly stored as components than as a full tensor.
 - this connects to the property A work.
 
+\todo{R}
+Just a package, supports some different formats, including CSR and Harwell-Boeing~\cite{koenker2003sparsem}
+
+
 \todo{parallelization} 
-\cite{ogielski1993sparse}
-\cite{erhel1995parallel}
-\cite{ujaldon1996parallelization}
+Algorithm to prepare for block formats~\cite{pothen1990computing}.
+
 \cite{catalyurek1999hypergraph}
+- starts from distribution goal, decides on row or column wise partitioning and then modifies the graph to sort it. this is the same as the permutation calculation stuff i think.
+
+
+
+- Distributed and shared memory systems add a layer to the physical heirarchy, so we need to start thinking about it as a layer in the logical heirarchy. %mine
+
+- Looking at how to do distribution~\cite{ogielski1993sparse}.
+- CSR distributed by rows~\cite{erhel1995parallel}.
+
+- 
 \cite{filippone2000psblas}
+- 
 
 \todo{start of tensor work}
 \cite{bouaricha1994tensor} 
@@ -338,21 +356,45 @@ They indicate that their approach cannot be done in the C++ STL alone because of
 \cite{kessler1999sparamat}
 
 
-\todo{R}
-\cite{koenker2003sparsem}
-
-
-
-
-\subsection{New Millenium, New Processors}
+\subsection{New Processor Types}
 
 \todo{gpu work}
 \cite{bolz2003sparse}
-\cite{bell2009implementing}
-\cite{williams2007optimization}
+- lengyel et al 1990 hoff 1999 on using graphics hardware for non graphics tasks
+- conjugate gradient sparse and regular grid multigrid solver
+- fitting nongraphics problems into the framework of graphics problems
+- fast gather, no scatter, simd.
+- calls for globally writable memory for the gpu
+
+\cite{fan2004gpu}
+- store problem data as textures bc they have random access
+- vertices represent the points of the computation
+- connection here to the polyhedral model, representing the points of the computation as points in space
+
+\todo{when was CUDA introduced? What is the development history of GPU technology?}
+
+\cite{bell2009implementing,bell2008efficient}
+- DIA ELL CSR COO HYB
+- Examines implementations of SpMV for different formats
+- At this point we have CUDA so the programming is not tied to the graphics concepts
+- good description of how GPUs works with reference to the problems of sparse computation.
+- HYB format combines ELL and COO to get COO flexibility with ELL speed
+
+
 \cite{baskaran2009optimizing}
 
+\cite{monakov2010automatically}
+- new storage format for sparse matrices for GPUs
+- sliced ELLPACK which modifies ELLPACK so that the input matrix is broken into slices by rows then individually stored in ELLPACK. 
+- Yet another submatrix scheme.
 
+
+
+\todo{multicore CPUs}
+\cite{williams2007optimization}
+- 
+
+\todo{FPGAs}
 Sparse data representation's interconnection with computer architecture is apparant more recently with the rise of FPGA coprocessors. 
 Plenty of work has focused on how to convert parts of sparse algorithms into specialized hardware~\cite{elgindy2002sparse,zhuo2005sparse,gregg2007fpga,prasanna2007sparse,jain2020domain,kapre2009parallelizing}, and this has led researchers to consider how best to organize the data for specialized coprocessors. 
 The first is a slight modification to BCSR, where the full matrix is divided into strips along the rows, then blocked and stored in CSR format~\cite{sun2007sparse}. 
@@ -376,6 +418,7 @@ By moving the row scheduling into the format, they reduce the complexity of the 
 
 \todo{tuning}
 \cite{vuduc2005oski}
+\cite{choi2010model}
 
 
 \todo{java}
@@ -385,7 +428,8 @@ By moving the row scheduling into the format, they reduce the complexity of the 
 
 \todo{inspector executor pattern}
 \cite{fu1996run}
-
+\cite{ujaldon1996parallelization}
+- may fit better into inspector executor, as their preprocessing tries to make IE unnecessary.
 
 
 \subsection{Where We Stand Today}
