@@ -118,6 +118,7 @@ But language abstractions are a powerful thing, and soon researchers began to us
 
 Alongside the formalization of American Standard Fortran~\cite{ansi1966fortran}, we see the rise of a class of matrix formats that will receive at the time historic attention: banded formats.
 While simpler banded formats were in use at the time, Jennings~\cite{jennings1966compact} provides influential modifications in his 1966 description of compact banded storage (CBS).
+\todo{i don't think this is actually what he calles it}
 CBS is a symmetric format that does best for matrices with nonzero entries concentrated around the main diagonal, a property that could be maximized with permutation algorithms~\cite{alway1965algorithm}.
 
 In this format, each row is stored from its first nonzero entry up to the diagonal entry. 
@@ -125,7 +126,7 @@ Then, a second indexing array is used to identify the positions of the diagonal 
 Listing~\ref{compactDiagonal} shows an example of this storage format in a similar style as is presented in Jennings work.
 Note the difference between this representation and that given in the earlier, pre-FORTRAN works. 
 A mathematical description has given way to one that shows FORTRAN arrays. 
-
+\todo{I should find a paper around this time that actually uses FORTRAN within it.}
 
 \begin{figure}
 \begin{lstlisting}[caption={A symmetric matrix and its compact diagonal storage representation},label={compactDiagonal}]
@@ -197,7 +198,7 @@ His work points to the importance of considering language-level constraints when
 \begin{figure}
   \todo{scan figures from Larcombe 1971}
   \caption{Reproduction of sparse matrix list structer from~\cite{larcombe1971list}}
-  \label{listStructure}
+\label{listStructure}
 \end{figure}
 
 Jenning and Tuff~\cite{jennings1971direct} present what I believe to be the first comparison of different sparse formats and storage technologies. 
@@ -310,58 +311,18 @@ Included in the formats is one the author describes a year prior: Jagged Diagona
 Later teams developed a modification to JAD, Transposed Jagged Diagonal Storage (TJDS) that reduces the storage overhead for the format~\cite{montagne2004optimal}.
 \todo{Description of the format}
 
-\cite{shahnaz2005review}
+
+\todo{matlab, where does this fit?}
+The Matlab programming environment is unique in that it has a single data type: the matrix. 
+All data is represented as a matrix, vectors as 1xN and scalars as 1x1.
+Unlike FORTRAN, where matrix computations are written as loop nests, Matlab matrix computations are written in matrix notation using standard operators.
+This makes it an interesting case for the consideration of sparse data.
+The earliest work on sparse data in Matlab comes in 1992, where Gilbert, Moler, and Schreiber~\cite{gilbert1992sparse} develop a sparse matrix extension.
+They support a wider range of operations (addition, transpose) than the Fortran packages of the time, which generally only supported running solvers. 
+The sparse nature of a matrix is not generally visible to the programmer, and matrices are stored in CSC format.
+Later work extend this to support additional sparse formats~\cite{kawabata2004matlab}, and even support for sparse tensors~\cite{bader2008efficient}.
 
 
-\todo{Sparse Matrix Collections}
-\cite{duff1989sparse}
-\cite{floridasparsematrixsuite}
-\cite{splatt}
-
-
-
-\todo{matlab}
-\cite{gilbert1992sparse}
-- matrix is only data type in matlab
-- implemented in C
-- broader range of operations than Fortran packages (add, transpose, etc)
-- matrices are stored by columns. CSC
-- sparsity is generally not visible to the user
-\cite{kawabata2004matlab}
-- translates annotated matlab into fortran 90
-- three representations
-- statements are written as matrix operations (A = x * C + B) rather than loops
-\cite{bader2008efficient}
-- proposes coordinate storage
-- thinking about when factored tensors can be more compactly stored as components than as a full tensor.
-- this connects to the property A work.
-
-\todo{R}
-Just a package, supports some different formats, including CSR and Harwell-Boeing~\cite{koenker2003sparsem}
-
-
-\todo{parallelization} 
-Algorithm to prepare for block formats~\cite{pothen1990computing}.
-
-\cite{catalyurek1999hypergraph}
-- starts from distribution goal, decides on row or column wise partitioning and then modifies the graph to sort it. this is the same as the permutation calculation stuff i think.
-
-
-\cite{kessler1999sparamat}
-- pattern matching an IR to find parallelizable sparse computations speculatively
-- generates two versions, fully optimized paralell and backup sequential
-
-
-- Distributed and shared memory systems add a layer to the physical heirarchy, so we need to start thinking about it as a layer in the logical heirarchy. %mine
-
-- Looking at how to do distribution~\cite{ogielski1993sparse}.
-- CSR distributed by rows~\cite{erhel1995parallel}.
-
-- 
-\cite{filippone2000psblas}
-- 
-
-openmp 1.0 in 1997~\cite{dagum1998openmp}
 
 \todo{start of tensor work}
 \cite{bouaricha1994tensor} 
@@ -434,7 +395,7 @@ Two stand out.
 First is Bell and Garland's Hybrid ELL+COO format~\cite{bell2009implementing,bell2008efficient}.
 In this format, the ELL format is modified to store problematic data points in a secondary COO formated storage. 
 This enables high data and access efficiency for the data while maintaining the flexibility of COO.
-\todo{this paragraph is trash.}
+\todo{this paragraph needs work.}
 
 Second is the Sliced ELLPACK format~\cite{monakov2010automatically}, which also modifies the ELL format.
 A submatrix scheme, this format breaks the matrix into sliced groups of rows, then stores each in their own ELL formatted data structure. 
@@ -499,11 +460,82 @@ The JSA format performs well compared to other popular formats when used in Java
 
 
 \todo{inspector executor pattern}
+
+\cite{mehrotra1989compiling}
+- identifies a need for new language abstractions to match the hardware constructs (distributed arrays)
+- separates distribution of data structures and allocation of work to processors
+- pulls all "fetch" instructions out of the forall loop
+- first, send all fetches. second, send all data other processors want. third, increment counter when all fetches have been received, fourth, begin loop.
+- keep track of the sends and receives, use that info on subsequent iterations to speed up communication phase
+- no use of "inspector" or "executor"
+
+\cite{koelbel1990supporting}
+- Kali programming environment for distributed computing, it looks a lot like Chapel
+- first, send messages. second, do local iterations. third, receive messages. last, do nonlocal iterations
+- uses "inspector" to describe the modified version of the forall that doesnt' do any computation, just record which nonlocal memory is needed
+- we're not changing the schedule here, just getting the data necessary for the already set schedule.
+
+
+\cite{saltz1990run}
+- want to precompute the elements a processor needs and get them in one big batch before starting the computation
+- optimizations: global index -> local index. pack more data into each message. preschedule communications
+
+\cite{saltz1991multiprocessors}
+- extending runtime preprocessing to the problem of parallelization
+- referring to rutime preprocessing as run-time compilation. 
+- there's the connection to JIT.
+- compiler is the one separating loop into "inspector" and "executor"
+
+
+\cite{leung1993improving}
+- reducing overhead of inspector by making it parallel
+- two approaches, one that scales well for inspector with nonoptimal executor and one that scales worse with optimal executor
+- inspector calculates wavefronts
+- inspector has the same parallelizable pattern as the source, so bootstrap. do the sectioning technique to parallelize the inspector, then have that run the more expensive inspector to use for the executor
+
+
+\cite{das1994communication}
+- inspector for determining iterations as well as data necessary
+- thinking again in terms of gather, scatter, accumulate
+
 \cite{fu1996run}
+- inspector executor pattern for matrix factorization
+- parallelize using graph scheduling
+- RAPID, provides library functions to specify irregular data and tasks on that data
+- C library
+- its not clear how the tasks are given to the executor
+
+
 \cite{ujaldon1996parallelization}
 - may fit better into inspector executor, as their preprocessing tries to make IE unnecessary.
 
 
+\todo{parallelization} 
+The 1990s saw the rise of multicore CPUs, adding new layers to the physical computing heirarchy. 
+In response, corresponding layers were needed in the logical heirarchy.
+
+Algorithm to prepare for block formats~\cite{pothen1990computing}.
+
+\cite{catalyurek1999hypergraph}
+- starts from distribution goal, decides on row or column wise partitioning and then modifies the graph to sort it. this is the same as the permutation calculation stuff i think.
+
+
+\cite{kessler1999sparamat}
+- pattern matching an IR to find parallelizable sparse computations speculatively
+- generates two versions, fully optimized paralell and backup sequential
+
+
+- Distributed and shared memory systems add a layer to the physical heirarchy, so we need to start thinking about it as a layer in the logical heirarchy. %mine
+
+- Looking at how to do distribution~\cite{ogielski1993sparse}.
+- CSR distributed by rows~\cite{erhel1995parallel}.
+
+- 
+\cite{filippone2000psblas}
+
+- 
+
+openmp 1.0 in 1997~\cite{dagum1998openmp}
 
 \subsection{SPF}
 
