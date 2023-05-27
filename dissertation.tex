@@ -79,6 +79,14 @@ escapeinside={<@}{@>}
 \usepackage[subtle]{savetrees}
 \vbadness=18000
 
+
+\newcommand{\dense}[0]{{\textsc{dense}}}
+\newcommand{\specialized}[0]{{\textsc{specialized}}}
+\newcommand{\sparseraja}[0]{{\textsc{sparseraja}}}
+\newcommand{\SpMV}[0]{{SpMV}}
+\newcommand{\GauSei}[0]{{GauSei}}
+\newcommand{\InCholFact}[0]{{InCholFact}}
+
 \begin{document}
 
 %\chapter{Introduction}
@@ -87,17 +95,23 @@ escapeinside={<@}{@>}
 
 %\include{FormatDecisions.tex}
 
+%\include{SparseHistory.tex}
 \include{SparseRAJA.tex}
+
+
 
 \chapter{Conclusion}
 
+
+
+
 We conclude with three avenues for future work.
 Here, we introduced support for format conversions among the space of dense, rectilinear permutation formats
-\footnote{The authors have been unable to find an existing name for this space of formats. We use \enquote{rectilinear} to distinguish from orderings that do not map linear threads of elements to consecutive memory, such as Z-orders or Morton orders. We use \enquote{permutation} to distinguish from the space's subset of lexicographic and colexicographic orders.}. 
+\footnote{The authors have been unable to find an existing name for this space of formats. We use \enquote{linear} to distinguish from orderings that do not map linear threads of elements to consecutive memory, such as Z-orders or Morton orders. We use \enquote{permutation} to distinguish from the space's subset of lexicographic and colexicographic orders.}. 
 One avenue of future work would examine alternative dense formats, including Z-orders, Morton orders, tiled data formats, and SOA-AOS formats.
 This would require interface modifications to allow the specification of these orderings and implementation modifications to support those formats in RAJA.
 Similarly, another avenue of future work would examine extending this approach to sparse data and computations. 
-While this would require more significant modifications to the RAJA library to support the specification of sparse computations, such an approach could build on the symbolic iteration space description support introduced in Section~\ref{sec:SymbolicSegment}. 
+%While this would require more significant modifications to the RAJA library to support the specification of sparse computations, such an approach could build on the symbolic iteration space description support introduced in Section~\ref{sec:SymbolicSegment}. 
 
 Beyond expanding the space of data formats the system can support, another direction for future research would examine support for accelerators like GPUs and FPGAs.
 Compared to CPU computing, programming systems for accelerators expect the programmer to take more responsibility for managing data movement.
@@ -110,5 +124,6 @@ Such an integration presents an interesting interface design problem in how to r
 
 \bibliographystyle{abbrv}
 \bibliography{dissertation.bib}
+
 
 \end{document}
