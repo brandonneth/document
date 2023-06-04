@@ -1,0 +1,263 @@
+\chapter{Introduction}
+
+High performance computer simulation plays a foundational role in modern science and engineering.
+For example, considering the ten-figure cost of a utility-scale wind farm~\cite{farmCost}, there is significant interest in ensuring the farm will behave as expected. 
+Computer simulation can help provide this confidence.
+
+When developing these types of applications, three competing concerns need balanced. 
+First is developer productivity.
+From the earliest days of computing~\cite{backus1957fortran} to today, code has been expensive to write.
+High-productivity languages like Python excel in the realm of developer productivity.
+While the actual execution of the code is slow, the ease of writing, maintaining, and updating the code can make up for the slow performance.
+However, in many situations, such as HPC, the code also needs to run quickly.
+For instance, when simulating extreme weather events such as hurricanes~\cite{fu2017redesigning}, time is of the essence. 
+A simulation that takes three days to report what the state of events will be in two days is outperformed by a glance out of a window.
+The second competing concern is exactly this: application performance.
+There are often real-world constraints on how long code execution can take.
+Consider the automatic breaking system in many modern vehicles.
+These systems do not have the luxury of running slowly, else they risk the safety of their passengers.
+On the other end, large simulation codes need to make the most out of the limited time they are allotted on HPC systems.
+Writing fast code runs at odds with programmer productivity in part because achieving good application performance normally requires the use of languages like C++ and Fortran, languages rarely lauded for their high developer productivity.
+The final competing concern, cross-system portability, runs in tension with both application performance and programmer productivity.
+Computing hardware is diversifying, meaning code optimized for one system may perform poorly on another.
+Finding one set of optimizations that give good performance across different systems is not straightforward, and not even always possible.
+The alternative is to maintain multiple versions of the same code base, each specially optimized for the system it is designed for.
+
+In developing HPC applications, DoE places emphasis on creating codes that run performantly on many different systems.
+Performance portability libraries like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{yakl} address this problem by surfacing the performance ``knobs'' that an engineer can use to tune an application for a particular system. 
+While powerful, this approach focuses on tuning each kernel independently, leaving out opportunities for optimizations that are applied across kernels.
+This dissertation explores how this approach to the problem of portable perforance can be strengthened, introducing support for inter-loop schedule (Chapter~\ref{chap:RAJALC}) and data (Chapter~\ref{chap:FormatDecisions}) transformations, as well as support for sparse computations with dependences (Chapter~\ref{chap:sparseRAJA}).
+
+\section{Performance Portability Libraries}
+\begin{figure}
+\begin{tabular*}{7in}[h]{|c|c | c c c c | c c |}
+\hline
+\makecell{Programming \\ Model} & Approach & \makecell{Multi-dimensional \\ Container} & \makecell{Sparse \\ Data} & \makecell{Static \\ Layout Changes} & \makecell{Dynamic \\ Layout Changes} & \makecell{Separated \\ Schedule} & \makecell{Cross-Kernel \\ Scheduling} \\ \hline
+OpenMP & Directives & No & No & No & No & No\\
+OpenACC & Directives \\
+OpenCL & Language \\
+HIP & Language & No & No & No & No & No & No \\
+CUDA & Language & No & No & No & No & No & No \\
+TACO & Language & Yes & Yes & Yes & Yes & Yes & Yes\\
+CHiLL & Language \\
+ExaStencil & Language \\
+Tiramisu & Language \\
+Halide & Language \\
+Kokkos & Library & Yes & No & Yes & No & No\\
+RAJA & Library & Yes & No & Yes & No & No\\
+YAKL & Library & Yes & No & Yes & No & No\\
+TBB & Library \\
+\hline
+\end{tabular*}
+\end{figure}
+
+Performance portabile libraries are driven by the need to create modularized and easily-tuned code.
+This is achieved through a process of decomposing the computation into seperable parts.
+While the specifics of this decomposition differ across libraries, they share key components.
+Broadly, these components appear as data abstractions and operation/execution abstractions.
+
+\subsubsection{Data Abstractions}
+Multi-dimensional data is exceedingly common in simulation codes.
+However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
+Thus, any multi-dimensional representation must be mapped to the 1-dimesional nature of the hardware.
+Usually, this is achieved by breaking the data into one-dimensional strips and storing each strip in sequence.
+Different ways to break the data into strips produce different orders of elements within memory.
+Two of these layouts that are well-known are the two dimensional column-major and row-major storage formats.
+Here, the strips of two-dimensional data are either the columns or the rows.
+
+Called a View in RAJA and Kokkos and an Array in YAKL, multidimensional data structures are a key abstraction through which these embedded libraries surface portability controls to the programmer.
+When tuning an application for a new system, changing the layout of data in memory can have large performance implications.
+These differences are especially relevant between different processor types, where a data layout that performs well on a CPU is not best for a GPU.
+It can also impact performance between two CPUs because of threading and cache behaviors~\cite{trott2021kokkos}.
+
+Traditional approaches to representing multi-dimensional data, such as the array of pointers or vector of vectors, do not admit an easy data layout change.
+This is due to the high degree of coupling between the layout and the method of data access. 
+For example, using these approaches, an access to the $(i,j)$th entry of a two dimensional structure will look like this: \verb.A[i][j]..
+Should the programmer want to try a column-major ordering instead of the default row-major, their only option is to completely transpose the data structure.
+This process starts with the cumbersome but managable task of redeclaring the sizes of each dimension in the structure's initializiation, switching the dimensions' extents.
+Then, every single access to the structure needs to be changed. 
+All instances \verb.A[i][j]. must become \verb.A[j][i]..
+This is a enormous task, and one where well-camouflaged bugs are born. 
+In a paragraph of prose, \verb.[i][j]. is easily distinguished from \verb.[j][i]..
+In a complicated loop nest making hundreds of data accesses, all using different orderings of the iterators, one forgotten (or extra) swap quickly creates crashes.
+And of course, once the transformation has been applied and the new bugs squashed, it may turn out that a layout change had no effect, or even a negative one.
+
+The multi-dimensional abstractions in P3 libraries bring the cost of such a transformation back to the scale of the programmer's thought-loop by introducing layout polymorphism.
+In Kokkos and YAKL, this polymorphism is restricted to compile-time.
+In RAJA, this polymorphism is restricted to runtime at the point of initialization.
+Regardless of where and how the programmer selects the layout specifically, the key idea here is that changing one thing about a data structure only requires changing one thing in the code.
+Changing layouts in these libraries does not require the data accesses to be changed too.
+This makes it signficantly easier to experiment with different layouts, thus reducing the cost of tuning for a new system.
+
+\subsubsection{Operation/Execution Abstractions}
+
+Like with their data abstractions, P3 libraries share an approach to their abstractions for specifying and executing the operations of a computation.
+At a high level, the computation is decomposed into an operation describing what to do, an iteration space describing which values to do it for, and scheduling information describing how to order and distribute them among the different processing elements.
+
+All three libraries share their use of functors to represent the operation of an individual iteration.
+Often represented using a lambda closure, these loop body statements form the basis for the description of a computation.
+Parameters to the lambdas represent the indices of an iteration space point. For example, the lambda for a matrix-vector multiplication would have two parameters, one for the outer loop value and one for the inner loop value.
+
+Isolating the schedule information allows the programmer to try out different loop schedules as part of tuning an application.
+For example, the programmer can easily change how a loop's iterations are distributed across threads.
+Another example of a scheduling optimization supported by all three libraries is loop tiling or blocking.
+
+\todo{One of my points: Manipulation requires data. Manipulating computations means computations must be viewed as data.}
+
+
+\section{Optimization Scopes}
+
+The transformations that these libraries surface to the programmer support a common paradigm for program optimization: profile, identify an expensive loop or kernel, try a transformation, and repeat.
+Using this paradigm, each kernel is optimized as a standalone piece of code.
+While useful for leveraging the maximum possible parallelism from an application, it draws attention away from the interrelation of the kernels.
+This means that important opportunities for performance optimization can go overlooked.
+
+\begin{figure}
+\begin{lstlisting}[caption={Example of a producer-consumer relationship between kernels. This relationship can be pointwise, like the first and second loops, or based on a stencil, like the third},label=producerConsumer]
+for(int i = 0; i < N; i++) {
+  A1(i) = A0(i) * 2;
+}
+for(int i = 0; i < N; i++) {
+  A2(i) = A1(i) - 1;
+}
+for(int i = 1; i < N-1; i++) {
+  A3(i) = (A2(i-1) + A(i+1)) / 2;
+}
+\end{lstlisting}
+\end{figure}
+One example of this phenomenon is producer-consumer kernel sequences.
+In this pattern, kernels produce values that are used in the kernels after them in the sequence.
+A simple example of this pattern is shown in Listing~\ref{producerConsumer}.
+With codes like these, the focus on the loops individually obscures the reuse of data between them.
+Rather than computing and storing the entirity of the intermediary arrays, a transformation like loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the CPU's registers.
+However, this transformation is not always beneficial, as increasing the number of statements in a loop body can increase the number of values that need to be on hand simultaneously. 
+A processor's CPU only has so many registers, so if a fused loop body needs to hold more than X\todo{get the number for an example processor}, some of those values will have to be pushed back to memory. 
+Reading and writing these values to and from memory takes an order of magnitude more time than register accesses, meaning a loop fusion operation has the potential to negatively affect perfromance.
+This means that the developer time spent exploring loop fusion as an optimization may not produce any performance improvement.
+
+A similar situation can emerge when considering the different ways the same View is accessed throughout an execution.
+If two computations access the same data in different orders, it can be worthwhile to change how that data is organized in memory so that both computations access the data in the most efficient way possible.
+As a simple example, consider the matrix multiplication $C = A * B$ followed by the matrix multiplication $E = A^{\top} * D$. 
+The way these computations will traverse the matrix $A$ is different. 
+In the computation of $C$, the data of $A$ is traversed across the rows, while in the computation of $E$, it is traversed across the columns.
+Assume for a moment that $A$ is stored in row-major order.
+Because the $C$ computation traverses the data of $A$ by rows, adjacent iterations will access elements of $A$ that are adjacent in memory.
+This has much more favorable cache behavior than the computation of $E$, where adjacent iterations access elements of $A$ that are more distant in memory.
+Performance can be improved by changing the layout of $A$ between the two computations, ensuring that both kernels have favorable access patterns.
+However, applying such a transformation by hand is, as discussed above, time consuming and error prone. 
+
+\section{Data Spaces}
+
+
+\todo{Introduce what I mean by a data space and the concept of sparse data and computation.}
+
+\begin{figure}
+\begin{tabular*}{7in}[h]{|c|c | c c c c | c c |}
+Format & Random Access Calculation & Incremental Access Calculation & Incremental Access Condition \\
+\textbf{Dense} \\
+Lexicographic Ordering \\ $AccessIndices * Strides$
+Strided Ordering \\ 
+U-Layout~\cite{chatterjee1999recursive} & $S(i,j) = B^{-1}(B(j) \bowtie (B(i) \text{ XOR } B(j)))$ \\
+X-Layout~\cite{chatterjee1999recursive} & $S(i,j) = B^{-1}((B(i) \text{ XOR } B(j)) \bowtie B(j))$ \\
+Z-Layout~\cite{chatterjee1999recursive} & $S(i,j) = B^{-1}(B(i) \bowtie B(j))$ \\
+\textbf{Sparse} \\
+Coordinate \\
+Compressed  (CSR) \\ 
+CCS (CSC) \\
+CHS (CSH) \\ 
+\end{tabular*}
+\end{figure}
+
+Key concept: strength reduction
+\todo{where should jagged arrays go?}
+
+Each storage format has a layout function mapping indices to where the corresponding entry is stored in memory.
+
+\subsection{Dense Storage}
+
+Generally, two types of layouts are used for storing dense data: the canonical orderings we see most often and recursive layouts based on bit interleavings.
+
+\subsubsection{Row- and Column-Major Storage}
+For two dimensional data, the two most common storage formats are row-major storage and column-major storage.
+Row-major storage, used by default in languages like C and C++, stores data so that adjacent elements in memory differ by their row index. 
+The layout function for row-major storage is $L_{RowMajor}(i,j) = i * NumRows + j$.
+Column-major storage, used by default in languages like Fortran and MATLAB, is quite similar to row-major storage, but adjacent elements in memory differ by their column index.
+The layout function for column-major storage is $L_{ColMajor}(i,j) = j * NumCols + i$.
+
+Generalizing row- and column-major to dimensions higher than two give storage formats that Kokkos refers to as LayoutRight and LayoutLeft, respectively. 
+In the two dimensional cases, each dimension has a stride length that indicates how far apart elements are that differ by one in that dimension.
+For row-major, the $i$ dimension has a stride of $NumRows$, while the $j$ dimension has a stride of 1.
+Similarly, for column-major, the $i$ dimension has a stride of 1, while the $j$ dimension has a stride of $NumCols$.
+LayoutRight and LayoutLeft refer to the order of the strides of the dimensions.
+In LayoutRight, generalizing row-major storage, the right-most dimension has the smallest stride, increasing in order to the left.
+In LayoutLeft, the left-most dimension has the smallest, increasing in order to the right.
+RAJA's permuted layouts, generalize these even further.
+Here, the order of the strides is relaxed to any permutation of the dimensions.
+When these storage formats are viewed as a list of dimension strides $s_1,s_2,\dots,s_n$, they all share the same layout function: $L_{strided} (i_1,i_2,\dots,i_n) = i_1 * s_1 + i_2 * s_2 + \dots + i_n * s_n$.
+
+
+Random access calculation: $AccessIndices * Strides$. 
+Incremental access update: $+Strides(incIndex)$
+
+\subsubsection{Interleavings / Z,U,X}
+
+Another collection of formats use a different type of layout functions: bit interleavings.
+Also known as Morton~\cite{morton} orderings, these formats derive from space-filling curves, one dimensional paths through multidimensional space that visit each point in the lattice.
+These formats are defined recursively, starting with the two dimensional case with a square side length of a power of two.
+At each level, the data space is split into four quadrants.
+The quadrants are ordered differently based on which layout is used. 
+Z-order layouts store them in the order top left, top right, bottom left, bottom right.
+U-order layouts store them in the order top left, bottom left, bottom right, top right.
+X-order layouts store them in the order top left, bottom right, bottom left, top right.
+Drawing a line connecting the quadrants in order creates shapes similar to the namesakes.
+Each quadrant is organized in a similar manner, recursing until a desired side length has been reached. 
+Different implementations recurse to different depths, with some going all the way to individual elements~\cite{frens1997auto}, while others default to a canonical layout once a certain side length has been reached~\cite{chatterjee1999recursive}.
+In implementing the layout functions for these types of layouts, bit interleaving generates the positions along the curve.
+For example, for a Z-order layout indexing to the element $2,5$, the following process is used.
+First, the indices are viewed as bit sequences. $2$ has the bit sequence $0010$ while $5$ has the bit sequence $0101$.
+These sequences are interleaved as $00011001$, indicating that the element with index $2,5$ will be found in position 25.
+
+This type of layout is useful because it improves cache behavior when used with recursive or blocked implementations of algorithms.
+One of the difficulties of getting good performance with these formats is the incremental calculation of the index values~\cite{wise2000ahnentafel,adams2006fast}.
+More recent work has explored using interleaving-based formats for multi-dimensional tensor data, using schedule changes to enhance the incremental index value calculation~\cite{pawlowski2019multi}.
+
+\subsection{Sparse Storage}
+
+\subsubsection{Sparse Coordinate Storage}
+
+The simplest sparse storage format stores data as a list of tuples containing the index values and nonzero for each entry.
+This gives rise to its name, coordinate storage (COO).
+
+
+Random access calculation: NumDims searches over NNZ index arrays
+Incremental access update: +1 if iterations are in the right order
+
+\subsubsection{Compressed Hyperplane Storage}
+
+
+
+
+\subsubsection{Level Sets}
+
+\subsubsection{Quasi-Linear Mappings}
+
+\section{Contributions}
+
+This dissertation aims to strengthen the P3 library approach in three ways: cross-kernel schedule transformations, cross-kernel data transformations, and support for sparse computations.
+
+In Chapter~\ref{chap:RAJALC}, I introduce two extensions to the RAJA library that are used throughout the dissertation.
+First are kernel wrappers that turn RAJA computations into objects that can be manipulated by the programmer.
+Second is the symbolic evaluation of kernel bodies, which collects data access information used to verify transformation safety and guide the automation of optimizations.
+Then, I introduce two cross-kernel schedule transformations: loop fusion and overlapped tiling.
+
+In Chapter~\ref{chap:FormatDecisions}, I build on the kernel wrapper and symbolic evaluation extensions to introduce inter-kernel data layout transformations through the \FormatDecisions{} interface.
+This interface allows the programmer to succinctly specify the desired format for different pieces of data throughout a computation.
+Because I incorporate a runtime performance model into the system, it can identify potentially beneficial transformations in addition to those specified by the programmer.
+Additionally, I augment the interface for describing iteration spaces in RAJA to support non-hyperrectangular iteration spaces.
+
+Finally, in Chapter~\ref{chap:SparseRAJA}, I develop prototype support for representing format-agnostic sparse computation and data within RAJA.
+Using symbolic evaluation, the prototype constructs a sparse iteration space from the dense-like specification provided by the programmer.
+Then, during kernel execution, the system uses a software prefetching approach to reduce the computational complexity of data access.
+While the system is outperformed by a format-specialized implementation, I identify a number of opportunities for further optimization and argue that in terms of computational complexity, the sparse prototype can eventually achieve comparable performance.
+
+Chapter~\ref{chap:Conclusion} concludes and identifies directions for future research.

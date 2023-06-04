@@ -807,3 +807,38 @@ Furthermore, subsequent modifications to the layout transformations, for example
 This improves maintainability and reduces the potential for introducing bugs.
 Overall, by approaching data layout optimization from the direction of programmer productivity, \FormatDecisions{} enables developers to explore different layouts with ease. 
 
+
+
+\section{Z Orders and Other Alternative Storage Layouts}
+
+Because logically adjacent elements of data can be distant from one another in memory, linear data layouts are quite sensitive to program schedule / traversal order.
+It would be desirable for a storage format to have the property that the logical distance between elements closely corresponds to their physical distance in memory.
+This problem of mapping multi-dimensional data to one-dimensional storage while maintaining some metric of nearness is achieved by space filling curves. 
+One popular example of a space filling curve is the Hilbert curve. \todo{image or more description}
+
+Researchers have used these space filling curves to develop data layouts with better and more consistent cache performance than linear layouts. 
+However, one key component of their approaches involves modifying the schedule of the algorithm to make good use of the new layouts. 
+Unsurprisingly, for a data layout based on a recursive definition, a recursive approach to the algorithm schedule is needed. 
+
+
+For example, consider the case of matrix multiplication.   
+Frigo et al~\cite{frigo1999cache} break down the problem into three recursive cases depending on the matrix size.
+For an $m \times n$ matrix $A$ and $n \times p$ matrix B, the algorithm halves the largest dimension and recurs to the base case of two $1\times1$ matrices.
+
+Chatterjee et al~\cite{chatterjee1999nonlinear} compare two nonlinear, multilevel layouts and their cache performance for different algorithm schedules.
+Their first layout $L_{4D}$, is based on the schedule transformation of loop tiling. 
+The data is split into a 2D grid of 2D grids, stored with a column-major order at both levels. 
+The second layout $L_{MO}$, is a slight modification. 
+While individual tiles are still stored in column-major order, the tiles are stored using a Z order. 
+They show that for a Morton order data layout to be beneficial, the algorithm schedule needs to be modified from the linear order. 
+
+Thus, it is worth considering the possible use of such a data layout within RAJA, and specifically as an option for \FormatDecisions.
+However, we encounter an early problem.
+The View type in RAJA is templated by the type of the Layout object it uses. 
+Because \FormatDecisions cannot change the type of a View at runtime, the space of possible layout choices is restricted to the possible Layouts of the given type.
+The Layout type supported for FormatDecisions is parameterized at runtime by the dimension permutation, but uses the same general indexing logic regardless of the permutation. 
+Supporting a Z order or blocked layout would mean defining a new Layout type.
+Thus, a programmer would be restricted to just linear layouts or just Z order layouts rather thna being able to switch between them. 
+
+There is also the problem of schedule modifications. 
+Supporting 

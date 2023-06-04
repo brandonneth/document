@@ -1,5 +1,5 @@
 \documentclass{report}
-
+\usepackage[left=1in, right=1in, top=1in, bottom=1in]{geometry}
 \usepackage{array} 
 \usepackage{comment}
 \usepackage{graphicx}
@@ -8,7 +8,7 @@
 \usepackage{balance}
 \usepackage{setspace}
 \usepackage[table]{xcolor}
-
+\usepackage{makecell}
 \usepackage{lstautogobble}
 \usepackage{subcaption}
 
@@ -31,6 +31,15 @@
 }
 \newcounter{row}
 \newcounter{col}
+
+\newcommand{\chapterabstract}[1]{
+    \begin{quote}
+        \singlespacing\small
+        \rule{10.5cm}{1pt}
+        #1
+        \vskip-4mm
+        \rule{10.5cm}{1pt}
+\end{quote}}
 
 \usepackage{lineno}
 \linenumbers
@@ -74,7 +83,7 @@ escapeinside={<@}{@>}
 \usepackage{xspace}
 \newcommand{\FormatDecisions}[0]{{\textsc{FormatDecisions}}}
 \newcommand{\su}[1]{{#1$\times$}}
-\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}}
+\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}{../sparseEval}}
 
 \usepackage[subtle]{savetrees}
 \vbadness=18000
@@ -89,14 +98,15 @@ escapeinside={<@}{@>}
 
 \begin{document}
 
-%\chapter{Introduction}
+\include{Introduction.tex}
+
 
 %\include{RAJALC.tex}
 
 %\include{FormatDecisions.tex}
 
 %\include{SparseHistory.tex}
-\include{SparseRAJA.tex}
+%\include{SparseRAJA.tex}
 
 
 
@@ -124,6 +134,155 @@ Such an integration presents an interesting interface design problem in how to r
 
 \bibliographystyle{abbrv}
 \bibliography{dissertation.bib}
+
+
+
+% \section{RAJA's Execution Model, In Depth}
+
+% While running, a kernel execution's state is maintained in a \verb.LoopData. object.
+% It contains a wrapped segment tuple, a param tuple, a resource object, and a parameter pack of body functors.
+% Here, we are interested in the process of wrapping the segment tuple. 
+% This process, implemented in \verb.make_wrapped_tuple., converts the tuple of segments to a tuple of \verb.Span. objects. 
+% Each \verb.Span. is initialized with the \verb.begin(). and \verb.end(). results of the corresponding entry of the segment tuple.
+% The \verb.Span. structure has two template arguments, an iterator type and an index type.
+
+% The tuple of \verb.Span. objects are referred to throughout kernel execution, through its own iterator interface. 
+% This interface either returns one of the iterators passed to its initialization, or a operator applied to it.
+% \verb.front. and \verb.back. dereference, \verb.back. and \verb.size. apply subtraction of integer and iterator, respectively.
+% Finally, \verb.operator[]. passes the operator on to the contained begin iterator.
+
+% \textit{The challenge here is creating a single segment tuple type that can represent the result of any of the possible transformations.}
+
+% Now, why was this not a problem when the dimensionalities are equal? 
+% Because the \textit{type} order of the tuple was always the same--one LeadSegment followed by N-1 FollowSegments--even while the dimension indices of the segments changed with the analysis results.
+% With the inequality cases, the order of the different segment types changes. 
+% Concretely, the difference is between the type \verb.tuple<DenseSegment,LeadSegment,FollowSegment>. and \verb.tuple<LeadSegment,FollowSegment,DenseSegment>..
+
+% One option forward is to reduce the number of types. 
+% However, see that we would have to reduce the number of types to one.
+% If we represent DenseSegment and LeadSegment with one type, say \verb.DLSegment., we still must reconcile the difference between \verb.tuple<DLSegment,DLSegment,FollowSegment>. and \verb.tuple<DLSegment,FollowSegment,DLSegment>..
+
+% Call this single segment type the \verb.SparseSegment..
+% This type needs to function as a wrapper for the different segment functionalities that the system will support.
+% It must have \verb.begin(). and \verb.end(). methods that create iterator objects, all still of the same type.
+% Call this iterator type  \verb.SparseIterator..
+
+% The \verb.SparseIterator. type needs to support the bracket operator and the minus operator. 
+% Here, the logic of the different types of segments can finally show itself through virtualization.
+% Here is a sketch of the \verb.SparseIterator. operators:
+% \begin{lstlisting}
+% struct SparseIteratorImpl {
+%   virtual idx_t & access(size_t i);
+%   virtual idx_t index();
+% }
+
+% struct DenseIteratorImpl : SparseIteratorImpl {
+%   camp::idx_t value;
+%   idx_t & access(size_t i) {
+%     return value + i;
+%   }
+%   idx_t* index() {return value;}
+% }
+
+% struct LeadIteratorImpl : SparseIteratorImpl {
+%   std::vector<idx_t> dimension;
+%   idx_t offset;
+%   size_t * currVal;
+%   idx_t & access(size_t i) {
+%     *currVal = i;
+%     return dimensionIterator[offset + i];
+%   }
+%   idx_t index() {
+%     return offset;
+%   }
+% }
+
+% struct FollowIteratorImpl : SparseIteratorImpl {
+%   std::vector<idx_t> dimension;
+%   idx_t offset;
+%   LeadSegmentImpl * leader;
+%   idx_t & access(size_t i) {
+%     return dimension[offset + leader->currVal + i];
+%   }
+%   idx_t index() {
+%     return offset;
+%   }
+% }
+
+% struct SparseIterator {
+%   SparseIteratorImpl * impl;
+%   idx_t & operator[](size_t i) {
+%     return impl->access(i);
+%   }
+%   idx_t operator - (SparseIterator other) {
+%     return 
+%   }
+% }
+
+% struct SparseSegmentImpl {
+%   virtual SparseIterator begin();
+%   virtual SparseIterator end();
+% }
+
+% struct DenseSegmentImpl : SparseSegmentImpl {
+%   idx_t low, high;
+%   DenseIteratorImpl * implLow;
+%   DenseIteratorImpl * implHigh;
+%   DenseSegmentImpl(idx_t l, idx_t h) : low(l), high(h) {
+%     implLow = new DenseIteratorImpl(low);
+%     implHigh = new DenseIteratorImpl(high);
+%   }
+%   SparseIterator begin() {
+%     return SparseIterator(implLow);
+%   }
+%   SparseIterator end() {
+%     return SparseIterator(implHigh);
+%   }
+% }
+
+% struct LeadSegmentImpl: SparseSegmentImpl {
+%   std::vector<idx_t> dimension;
+%   LeadIteratorImpl * implLow = new LeadIteratorImpl(dimension, 0, &currVal);
+%   LeadIteratorImpl * implHigh = new LeadIteratorImpl(dimension, dimension.size(), &currVal);
+%   idx_t currVal;
+%   SparseIterator begin() {
+%     return SparseIterator(implLow);
+%   }
+%   SparseIterator end() {
+%     return SparseIterator(implHigh);
+%   }
+% }
+
+% struct FollowSegmentImpl : SparseSegmentImpl {
+%   std::vector<idx_t> dimension;
+%   LeadSegmentImpl leader;
+%   FollowIteratorImpl * implLow = new FollowIteratorImpl(dimension, 0, &leader);
+%   FollowIteratorImpl * implHigh = new FollowIteratorImpl(dimension, 1, &leader);
+
+%   SparseIterator begin() {
+%     return SparseIterator(implLow);
+%   }
+%   SparseIterator end() {
+%     return SparseIterator(implHigh);
+%   }
+% }
+
+% struct SparseSegment {
+%   SparseSegmentImpl * impl;
+%   SparseIterator begin() {
+%     return impl->begin();
+%   }
+%   SparseIterator end() {
+%     return impl->end();
+%   }
+% }
+% \end{lstlisting}
+
+
+
+
+
+
 
 
 \end{document}
