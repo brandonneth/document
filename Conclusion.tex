@@ -1,0 +1,53 @@
+\chapter{Conclusion}
+\label{chap:Conclusion}
+
+\section{Limitations}
+
+\subsection{Conversion Across Format Category}
+One limitation to this approach is the space of possible formats that it can support. 
+While it would be desirable to convert data to blocked layouts (for tiling) or cache oblivious layouts (like Z order), the structure of the View and Layout types in RAJA limit format conversion to strided layouts. 
+Because the type of the layout is a template parameter to the View type, all layouts that a View might use in a computation must be the same type. 
+This permits permuting linear orderings because the permutation of the dimensions are not part of the Layout type declaration. 
+However, other layouts would have to be implemented as new types. 
+This means that while it would be possible to change from one blocked layout to another blocked layout at runtime, it is not possible to change from a linear layout to a blocked layout, or a blocked layout to a linear one.
+
+This limitation could technically be overcome using virtualization through a generic Layout base type. 
+However, with this approach, each data access would require a table lookup to resolve the virtualization. 
+While an  individual lookup is quick, the performance implications of adding such a lookup for the highest frequency methods in a program are too costly.
+\todo{I have some preliminary results showing this, are they worth including somewhere?}
+
+An additional limitation to the use of cache-oblivious layouts becomes clear when considering how these layouts are most often used. 
+Cache-oblivious layouts are never used alone. 
+Instead, they are combined with schedule transformations that implement traditionally iterative algorithms in a recursive manner. 
+While such transformations may technically be possible in RAJA, they are beyond the scope of this dissertation.
+
+\section{Future Directions}
+
+\begin{itemize}
+  \item Symbolic evaluation support for limited indirect accesses
+  \item Symbolic evaluation support for conditionals
+  \item Integration of RAJALC with \FormatDecisions{} to combine schedule and data transformations
+  \item Additional sparse formats, CSR, CSC, Blocked CSR
+  \item SoA-AoS layout transformations
+  \item Implementing this work in other libraries: Kokkos, YAKL, possibly even Hypre and other solver libraries
+  \item Using symbolic evaluation to automatically identify candidate kernels for offloading
+  \item Automatic tuning of transformation parameters like overlapped tile size.
+\end{itemize}
+
+
+We conclude with three avenues for future work.
+Here, we introduced support for format conversions among the space of dense, rectilinear permutation formats
+\footnote{The authors have been unable to find an existing name for this space of formats. We use \enquote{linear} to distinguish from orderings that do not map linear threads of elements to consecutive memory, such as Z-orders or Morton orders. We use \enquote{permutation} to distinguish from the space's subset of lexicographic and colexicographic orders.}. 
+One avenue of future work would examine alternative dense formats, including Z-orders, Morton orders, tiled data formats, and SOA-AOS formats.
+This would require interface modifications to allow the specification of these orderings and implementation modifications to support those formats in RAJA.
+Similarly, another avenue of future work would examine extending this approach to sparse data and computations. 
+%While this would require more significant modifications to the RAJA library to support the specification of sparse computations, such an approach could build on the symbolic iteration space description support introduced in Section~\ref{sec:SymbolicSegment}. 
+
+Beyond expanding the space of data formats the system can support, another direction for future research would examine support for accelerators like GPUs and FPGAs.
+Compared to CPU computing, programming systems for accelerators expect the programmer to take more responsibility for managing data movement.
+The \FormatDecisions{} interface could be extended to allow users to mark kernels for offloading while the underlying symbolic evaluation could be used to ensure all necessary data is accessible to the accelerator in a format that is performant for that system. 
+
+Finally, \FormatDecisions{} could be integrated with the loop schedule transformation framework of RAJALC. 
+This would enable the simultaneous optimization of both the schedule and the data layout, giving the programmer even greater control over the execution of their computations.
+Such an integration presents an interesting interface design problem in how to refer to the products of schedule transformations that may combine multiple loops into one. 
+

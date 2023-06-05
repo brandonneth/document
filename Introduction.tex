@@ -146,32 +146,14 @@ This has much more favorable cache behavior than the computation of $E$, where a
 Performance can be improved by changing the layout of $A$ between the two computations, ensuring that both kernels have favorable access patterns.
 However, applying such a transformation by hand is, as discussed above, time consuming and error prone. 
 
-\section{Data Spaces}
+\section{Data Formats}
 
-
-\todo{Introduce what I mean by a data space and the concept of sparse data and computation.}
-
-\begin{figure}
-\begin{tabular*}{7in}[h]{|c|c | c c c c | c c |}
-Format & Random Access Calculation & Incremental Access Calculation & Incremental Access Condition \\
-\textbf{Dense} \\
-Lexicographic Ordering \\ $AccessIndices * Strides$
-Strided Ordering \\ 
-U-Layout~\cite{chatterjee1999recursive} & $S(i,j) = B^{-1}(B(j) \bowtie (B(i) \text{ XOR } B(j)))$ \\
-X-Layout~\cite{chatterjee1999recursive} & $S(i,j) = B^{-1}((B(i) \text{ XOR } B(j)) \bowtie B(j))$ \\
-Z-Layout~\cite{chatterjee1999recursive} & $S(i,j) = B^{-1}(B(i) \bowtie B(j))$ \\
-\textbf{Sparse} \\
-Coordinate \\
-Compressed  (CSR) \\ 
-CCS (CSC) \\
-CHS (CSH) \\ 
-\end{tabular*}
-\end{figure}
-
-Key concept: strength reduction
-\todo{where should jagged arrays go?}
-
+A key element of application performance is how its data is organized.
+While most programming languages have a built-in default storage format, P3 libraries allow more freedom in the order elements are stored in memory.
+For sparse computations, where the data used in the computation is mostly composed of zeros, the organization of the data is even more important.
 Each storage format has a layout function mapping indices to where the corresponding entry is stored in memory.
+Here, I review a handful of formats for both dense and sparse data. 
+These different ways of organizing data will come into play in the second half of this dissertation, where I focus on data layout optimizations and prototype support for sparse computation.
 
 \subsection{Dense Storage}
 
@@ -223,6 +205,11 @@ More recent work has explored using interleaving-based formats for multi-dimensi
 
 \subsection{Sparse Storage}
 
+For sparse computations, storage formats are much more varied.
+The best format for an sparse application depends on the architecture of the executing machine and the desired schedule just like dense codes.
+In addition, the structure of the data plays a much more important role in the selection of sparse formats.
+Here, I review the more common, general purpose sparse formats COO and CSR/CSC.
+
 \subsubsection{Sparse Coordinate Storage}
 
 The simplest sparse storage format stores data as a list of tuples containing the index values and nonzero for each entry.
@@ -260,4 +247,4 @@ Using symbolic evaluation, the prototype constructs a sparse iteration space fro
 Then, during kernel execution, the system uses a software prefetching approach to reduce the computational complexity of data access.
 While the system is outperformed by a format-specialized implementation, I identify a number of opportunities for further optimization and argue that in terms of computational complexity, the sparse prototype can eventually achieve comparable performance.
 
-Chapter~\ref{chap:Conclusion} concludes and identifies directions for future research.
+Chapter~\ref{chap:Conclusion} identifies limitations, directions for future research, and concludes.
