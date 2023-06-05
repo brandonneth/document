@@ -25,14 +25,14 @@ Should they wish to change the data layout mid-computation, they would have to u
 The brave soul who chooses this option must still overcome yet another obstacle: selecting the right combination of formats.
 Even a modest computation of two loops that use four 2D arrays has more than 200 combinations from which to choose, so trying all possible options quickly becomes infeasible. 
 
-We focus here on data layout transformations between canonical\footnote{By canonical, we mean row-major and column-major layouts, as well as their higher dimensional analogues.} data layouts.
+I focus here on data layout transformations between canonical data layouts.
 This is a well-known class of optimization, usually implemented within the context of a specialized compiler~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic,chen2004ilp,chen2005constraint,chen2005integrating, ozturk2011data}.
 However, there are clear limitations to the fully automated approach, evidenced by its exclusion from all major production compilers.
 Chief among them is the lack of programmer control.
 Others have made efforts to enable this user control in domain-specific languages, such as ExaSlang~\cite{kronawitter2018automatic} and Tiramisu~\cite{baghdadi2019tiramisu}.
 Unfortunately, while domain-specific languages are powerful expressive tools, they require specialized compilers and build pipelines. 
 
-In this paper, we address the problem of enabling high-level programmer control of these layout transformations within RAJA, a C++ performance portability library.
+In this chapter, I address the problem of enabling high-level programmer control of these layout transformations within RAJA, a C++ performance portability library.
 The first challenge is providing an interface for describing the format data should have for different parts of the computation.
 The second challenge is enabling programmer control without requiring it.
 This requires the composition of programmer decisions with automated decisions.
@@ -44,7 +44,7 @@ We make the following contributions:
 \item An as-automated-as-desired transformation selection system using a built-in performance model to augment user decisions; and 
 \item Support for a wider range of computations by expanding the types of iteration spaces that RAJA can represent.
 \end{itemize}
-We evaluate our contributions by comparing its performance and source lines of code (SLOC) changed/added to hand-implemented transformations on a collection of benchmark kernels.
+I evaluate the contributions by comparing its performance and source lines of code (SLOC) changed/added to hand-implemented transformations on a collection of benchmark kernels.
 Additionally, we examine its use on the miniQMC proxy application.
 
 The rest of the paper proceeds as follows. 
@@ -111,7 +111,7 @@ Section 7 reviews related work and Section 8 concludes.
 
 \label{sec:kernelObjects}
 
-We use a variety of components of the performance portability C++ library RAJA to enable automatic data format transformations, as well as features of the loop chain extension RAJALC~\cite{neth2021inter}. 
+We use a variety of components of the performance portability C++ library RAJA to enable automatic data format transformations, as well as features of the loop chain extension RAJALC (see Chapter~\ref{chap:RAJALC}).
 This section reviews how a computation is programmed in RAJA, the additions made by RAJALC, and how this work adds more expressive capabilities to the RAJA programming model.
 
 \subsection{RAJA and RAJALC}
@@ -161,11 +161,11 @@ Note that the change in \verb.B.'s layout does not change how it is used in the 
 Second, Views use the call operator to perform memory accesses. 
 By overloading this call operator, RAJALC~\cite{neth2021inter} introduced capabilities into RAJA for runtime symbolic evaluation.
 RAJALC uses the symbolic evaluation results to partially automate and ensure the safety of its schedule transformations.
-Here, we use it in automated transformation selection model.
+Here, I use it in automated transformation selection model.
 
 The usual evaluation of the lambda would read, combine, and write different data elements.
 With symbolic evaluation, operator overloading creates expression trees instead.
-As an example, we walk through the symbolic evaluation of a lambda containing the statement \verb.A(i) = B(i+1)..
+As an example, I walk through the symbolic evaluation of a lambda containing the statement \verb.A(i) = B(i+1)..
 First to be evaluated is the expression \verb.i+1.. 
 The \verb.+. operator is overloaded to create a new symbolic iterator expression tree, representing the \verb.i+1.. 
 Then, the View's call operator is overloaded to create a symbolic access object, containing a reference to \verb.B. and the previously constructed expression tree.
@@ -193,7 +193,7 @@ Examples of these computations include LU decomposition, cholesky factorization,
 % The third option sets aside RAJA entirely to maintain the abstraction of a two dimensional loop: use regular C++.
 % These options are all troublesome, for performance in the first case, and portability/maintainance in the second and third. 
 
-To address this limitation and represent iteration spaces with relations between the dimensions, we introduce the \verb.SymbolicSegment. type. 
+To address this limitation and represent iteration spaces with relations between the dimensions, I introduce the \verb.SymbolicSegment. type. 
 Unlike the \verb.RangeSegment., which requires integer values for its start, stop, and stride, the \verb.SymbolicSegment. supports expressions that combine other segments with constant values. 
 This process involves two elements.
 First, the \verb.SymbolicSegment. objects maintain their current value through the execution of a kernel. 
@@ -302,10 +302,10 @@ Throughout the computation, the data is accessed in different orders.
 For example, note the Views \verb.A., \verb.B., and \verb.D..
 The order in which \verb.A. is accessed is different from \verb.D. because the argument order in their accesses are different.
 In contrast, while \verb.B. and \verb.D. have the same argument order, their access orders are still different because they have different layouts.
-Looking at the two references to \verb.F. in kernels two and three, we can see that even access order to the same data can change through a computation.
+Looking at the two references to \verb.F. in kernels two and three, I can see that even access order to the same data can change through a computation.
 Because different formats are optimal for different kernels, this creates an opportunity for optimization. 
 
-Our approach, shown in action in Listing~\ref{FormatDecisions3MM}, introduces a single user-facing class, appropriately named \verb.FormatDecisions..
+My approach, shown in action in Listing~\ref{FormatDecisions3MM}, introduces a single user-facing class, appropriately named \verb.FormatDecisions..
 Rather than inserting code blocks to change a View's data layout between kernel executions, the user register choices for what format the data should have during different computations. 
 Once the user has finished registering their choices, they can launch the supplementary model to identify additional optimizations or immediately generate the loop chain containing the computations and the conversions.
 
@@ -315,7 +315,7 @@ The second method, \verb.set_output_format()., takes a View and a dimensional or
 Lines 13 through 17 of Listing~\ref{FormatDecisions3MM} show four such registered choices.
 
 
-While we provide a supplementary decision model that can identify additional worthwhile layout changes, its use is not mandatory.
+While \FormatDecisions{} provide a supplementary decision model that can identify additional worthwhile layout changes, its use is not mandatory.
 To ``fill-in'' the user's choices with those of the model, the programmer can use the \verb.model(). method.
 Because this method uses the symbolic evaluation capabilities provided by RAJALC, it can only be used when the operations are supported for symbolic evaluation.
 This means that the kernels cannot make indirect accesses (\verb.a(b(i)).), or call functions within the lambdas that use the iterators.
@@ -337,18 +337,18 @@ First, registering formats is more declarative, as it does not dictate exactly h
 Second, registering conversions requires specification of both the input and output formats. 
 Any conversion can be specified with two format registrations, but no number of conversion registrations can specify the same thing as a single format registration.
 
-With these considerations in mind, we decided on two methods: \verb.set_format_for. and \verb.set_output_format..
-When choosing this pair, the shorter \verb.set_format. was considered, but lacks the mnemonic match between the words of the method name and the parameter order. We \textbf{set} the View to \textbf{format} X \textbf{for} computation Y. 
+With these considerations in mind, I decided on two methods: \verb.set_format_for. and \verb.set_output_format..
+When choosing this pair, the shorter \verb.set_format. was considered, but lacks the mnemonic match between the words of the method name and the parameter order. You \textbf{set} the View to \textbf{format} X \textbf{for} computation Y. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Constraint Model}
 
 In addition to the format changes registered by the user, \FormatDecisions{} gives the user the option to automate the transformation selection process through the \verb.model(). method.
 This capability means that even without any registered format choices, \FormatDecisions{} often selects the same changes the user would themselves choose.
-Following existing work, we encode the problem as an optimization problem where constraints encode registered decisions and the objective function encodes the estimated costs of format use and conversion.
+Following existing work, I encode the problem as an optimization problem where constraints encode registered decisions and the objective function encodes the estimated costs of format use and conversion.
 While the overall technique is based on existing work, implementing it within the RAJA library introduces new challenges, especially around estimating the costs of applying the transformations and using different layouts in the code.
 
-The next three subsections describe how we set up the decision space and constraints, how we construct the objective function, and how we estimate the cost coefficients for the variables in the model.
+The next three subsections describe how I set up the decision space and constraints, how I construct the objective function, and how I estimate the cost coefficients for the variables in the model.
 While this model is built into the \FormatDecisions{} system, alternative models and approaches for automating the selection process can easily be incorporated as well.
 
 \subsection{Constraining the Decision Space}
@@ -421,7 +421,7 @@ When it comes time to solve the model, the input format variables are set based 
 
 \subsection{Constructing the Objective Function}
 
-The objective function for our model estimates the runtime performance of different format choices by considering the costs of format uses and format conversions.
+The objective function for the model estimates the runtime performance of different format choices by considering the costs of format uses and format conversions.
 
 Each View reference in the computation contributes one term to the objective function for each possible data layout. This means that the reference \verb.F(i2,i1). in \verb.knl3.  contributes two terms.
 The first term,  $c * x_{(F,row,knl3)}$,  represents the cost of that reference if \verb.F. were in row-major order. 
@@ -429,7 +429,7 @@ The second term, $c^\prime * x_{(F,col,knl3)}$  represents the cost of that refe
 Because \verb.F. is not referenced in the first kernel, the objective function does not contain linear terms for either $x_{(F,row,knl1)}$ or $x_{(F,col,knl1)}$.
 However, these decision variables appear in terms for format conversion costs.
 
-Because a format conversion depends the format coming in and going out of the conversion, jconversion cost terms contain two decision variables.
+Because a format conversion depends the format coming in and going out of the conversion, conversion cost terms contain two decision variables.
 For example, consider the conversion step between \verb.knl1. and \verb.knl2..
 There are two possible conversions to consider: row-major to row-major and column-major to row-major. 
 Converting from row-major to row-major requires no action, so we  find the term $0 * x_{(F,row,knl1)} * x_{(F,row,knl2)}$ in the objective function.
@@ -455,15 +455,16 @@ First, because the profiling is executed at runtime, it is desirable to run as f
 Second, because any modeling functions incorporated into RAJA are written and compiled before the runtime symbolic evaluation gathers the argument order, the modeling function cannot use the symbolic evaluation results to construct the profiling kernel. 
 Instead, the profiling function must be constructed ahead of time to be capable of modeling an arbitrary access.
 Thankfully, these problems can be addressed as a pair.
-Our approach partitions the space of accesses, viewed as triples of the form $(nesting,layout,argument)$, into equivalence classes based on their expected performance characteristics.
+The approach here partitions the space of accesses, viewed as triples of the form $(nesting,layout,argument)$, into equivalence classes based on their expected performance characteristics.
 Then, each equivalence class can be modeled using just one of its entries.
 
+% plural bc me and the reader
 Given a data access to classify, we begin by determining the nesting, layout, and argument orders.
 The nesting order is found in the policy of the kernel containing the data access.
 The values of the nesting order indicate which dimension of the iteration space each level of the loop nest will traverse. 
 The argument order for a data access is the mapping between the dimensions of the iteration space and the dimensions of the data. 
 For example, the argument order $(2,0)$ indicates that dimension 2 of the iteration space is used to index dimension 0 of the data, and that dimension 0 of the iteration space is used to index dimension 1 of the data.
-Finally is the layout order, which is varied based on what layout we are modeling. 
+Finally is the layout order, which is varied based on what layout the system is modeling. 
 This ordering indicates the stride order of the dimensions.
 For example, the layout order $(2,0,1)$ is stride-1 in the first dimension and has the largest stride in the second.
 
@@ -598,8 +599,8 @@ auto knl2 = make_kernel<Policy_201>(domain, matmul_lambda);
 \section{RAJAPerf Benchmark Suite}
 \label{sec:Experiment1}
 
-Our first evaluation experiment examines application performance and programmer productivity using benchmarks from the RAJA Performance Suite (RAJAPerf)~\cite{hornung2017raja}. 
-When selecting benchmarks for inclusion in our evaluation, we had three criteria.
+The first evaluation experiment examines application performance and programmer productivity using benchmarks from the RAJA Performance Suite (RAJAPerf)~\cite{hornung2017raja}. 
+When selecting benchmarks for inclusion in the evaluation, there are three criteria.
 First, the benchmark needs to use multidimensional data. 
 Benchmarks that use only scalar and one-dimensional data cannot be optimized with \FormatDecisions{} because there is only one format to choose from.
 This criteria excludes 45 of the 63 benchmarks.
@@ -635,20 +636,20 @@ It computes $A*B$, then $C*D$, then multiplies the results.
 	\caption{Benchmark variant descriptions.}
 	\label{VariantDescription}
 \end{table}
-For each benchmark, we implement 4 variants and compare execution time and code length, shown in Table~\ref{VariantDescription}.
+For each benchmark, I implement 4 variants and compare execution time and code length, shown in Table~\ref{VariantDescription}.
 \verb.RAJALC. implements the computations using the kernel objects discussed is Section~\ref{sec:kernelObjects}. 
 \verb.Hand_Layout. implements identified transformations without using \FormatDecisions. 
-Because this variant does not have any analysis overhead, we expect this variant to be the fastest.
+Because this variant does not have any analysis overhead, I expect this variant to be the fastest.
 The \verb.Format_Decisions. variant uses \FormatDecisions to register the identified layout changes but does not use the model to look for other beneficial transformations.
 Last, \verb.Model_Choice. allows the decision model to make all layout choices without providing any user-identified transformations.
 
 \subsection{Performance Evaluation}
 All performance results in this paper were collected on a single node with a 44-core IBM Power9 CPU and 256GB of CPU memory. 
-We run with 22 threads on one socket to avoid transfers over a relatively slow inter-socket connection.
+I run with 22 threads on one socket to avoid transfers over a relatively slow inter-socket connection.
 All compilation used GCC version 8.3.1 with \verb.-O3. optimization.
 \label{sec:systemDetails}
 Figure~\ref{fig:speedups} reports the average speedup of the variants relative to the \verb.RAJALC. variant across 5 runs. 
-We run the kernels at three problem sizes.
+I run the kernels at three problem sizes.
 The default size for the RAJAPerf suite is SizeFactor=1, while SizeFactors 2 and 4 scale the problem size by 2 and 4, respectively.
 
 \begin{figure*}
@@ -684,9 +685,9 @@ Finally, for SizeFactor=4, \verb.Hand_Layout. and \verb.Format_Decisions. give s
 
 \subsection{Productivity Evaluation}
 
-To evaluate the productivity of \FormatDecisions{}, we report the source lines of code added or changed for each of the variants.
+To evaluate the productivity of \FormatDecisions{}, I report the source lines of code added or changed for each of the variants.
 This value is calculated by counting the number of line differences using python's \verb.Differ.. 
-We preprocess to remove all whitespace-only lines.
+I preprocess to remove all whitespace-only lines.
 Figure~\ref{PolybenchSLOC} shows the results.
 With the exception of \textsc{3mm} and \textsc{qmc}, using \FormatDecisions{} requires between 2 and 3$\times$ fewer code changes than implementing the transformations by hand. 
 When using the performance model to make the layout choices, this is reduced further, requiring 4 to 6$\times$ fewer code changes. 
@@ -811,38 +812,38 @@ comp();
 \end{lstlisting}
 \end{figure}
 
-To begin the search for a profitable transformation sequence, we enumerate the accesses with orders that do not align with the schedule, transforming to a layout with a stride of one.
+To begin the search for a profitable transformation sequence, I enumerate the accesses with orders that do not align with the schedule, transforming to a layout with a stride of one.
 These selections can be seen in Figure~\ref{miniQMCChoices}
 However, this complete enumeration is slower than a baseline \FormatDecisions{} version that makes no conversions at all, with a runtime of 27.28 seconds compared to the baseline's 23.63.
 
 To refine the transformation sequence, we note that the access to \verb.Ainv. in the final kernel does not change most iterations, as it does not use the innermost loop index. 
-Our second transformation sequence uses this fact, making format choices only on Views that use the innermost index. 
+The second transformation sequence uses this fact, making format choices only on Views that use the innermost index. 
 This version executes in 22.38 seconds, an improvement over the \FormatDecisions{} baseline. 
 Subsequent versions transforming only \verb.U. or \verb.V. indicate that this performance improvement is coming mainly from the transformations to \verb.U.
 
 \subsection{Proving Constness}
 
-While we are able to identify a transformation sequence that improves performance compared to the \FormatDecisions{} baseline, there is significant performance overhead compared to the RAJA baseline, 23.63 and 10.18 seconds respectively.
+While I am able to identify a transformation sequence that improves performance compared to the \FormatDecisions{} baseline, there is significant performance overhead compared to the RAJA baseline, 23.63 and 10.18 seconds respectively.
 The first possible cause to explore is overhead from initializing the \FormatDecisions{} object, registering transformations, and generating the final computation. 
-To explore this hypothesis, we return to the baseline implementation and wrap these components in an additional timer. 
+To explore this hypothesis, I return to the baseline implementation and wrap these components in an additional timer. 
 However, this timer clocks a vanishly small contribution: 0.0022 seconds.
 
 If the overhead is not a product of the \FormatDecisions{} object itself, it must be from the computation object it generates.
 Regardless of what conversions are registered, this computation object is a fixed-length loop chain.
 Between each of the kernels from the computation itself is one converter kernel for each of the Views being considered as targets for conversions.
 When there are no conversions to make, these converters should quickly resolve to a no-op.
-To better understand their contribution to the overall execution time, we compare our baseline, which has four converters between each of the original kernels, with a version that has just one.
+To better understand their contribution to the overall execution time, I compare the baseline, which has four converters between each of the original kernels, with a version that has just one.
 Compared to the baseline's 23.63 seconds, this version takes 23.43.
 While an ever-so-slight reduction in execution time, it is not nearly enough to account for the overhead.
 
-With the converters eliminated as a suspect, we are left only with the kernel container that holds the loop chain.
-We can create this container manually to exclude any possible influence of the \FormatDecisions{} code.
-With an execution that takes 23.50 seconds, we have a clue as to the underlying cause.
+With the converters eliminated as a suspect, I am left only with the kernel container that holds the loop chain.
+I can create this container manually to exclude any possible influence of the \FormatDecisions{} code.
+With an execution that takes 23.50 seconds, there is a clue as to the underlying cause.
 Something about having the kernel objects in a container is affecting their performance.
 At first glance, it seems that something in the chain's execution is causing the problem.
 However, this is unlikely, as the chain's call operator resolves at compile time to just a sequence of calls to each of the kernels.
 
-We can confirm this with a version that creates the loop chain object, but does not use it to run the computation.
+I can confirm this with a version that creates the loop chain object, but does not use it to run the computation.
 This version takes 23.44 seconds, even though it, like the faster RAJA baseline, executes the kernel directly.
 This suggests that important compiler optimizations are no longer applied when the kernel objects are incorporated into another object. 
 However, when constructed with const references rather than by value, this performance reduction is removed.
@@ -857,7 +858,7 @@ especially through tiling techniques~\cite{bondhugula2008pluto,bertolacci2015par
 
 In the domain of data layout transformations, early work in High Performance Fortran (HPF) and D compilers~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic} provide foundations for a variety of later approaches.
 Their framework follows a popular pattern: generate a space of possible choices, estimate the performance of different choices, and select an option using an ILP formulation. 
-Our ILP problem formulation is similar to theirs, although we do not use the data layout graph intermediate representation.
+The problem formulation used here is similar to theirs, although we do not use the data layout graph intermediate representation.
 Furthermore, where their model for cost estimation focuses on communication costs in a distributed context, our approach models on-node performance costs of cache misses.
 
 The polyhedral model, traditionally used for schedule transformations, is commonly leveraged for data layout transformations as well.
@@ -873,7 +874,7 @@ Recognizing the need for specialized support for ever-changing chip structure, M
 Built into the Habenero-C compiler, the meta-data provided by the user guides the generation of architecture-specific SOA, AOS, and SOAOS data layouts.
 Another approach by Kofler, Cosenza, and Fahringer~\cite{kofler2015automatic} convert AOS implementations to other data layouts for GPU applications automatically.  
 With the exception of Majeti et al., these approaches do not provide an interface to the developer, and without exception are compiler-based approaches.
-Our approach presents an interface to the developer in the form of a library API, allowing user control and low-cost integration into existing workloads.
+The \FormatDecisions{} approach presents an interface to the developer in the form of a library API, allowing user control and low-cost integration into existing workloads.
 
 Although still in the realm of the compiler-based techniques, pragmas have been suggested as a solution to the problem of providing control over the transformations to the user.
 Proposals to add such pragmas have been submitted to OpenMP~\cite{kruse2019design} and Clang~\cite{kruse2018user}.
@@ -894,7 +895,7 @@ One way of doing this is by changing how data is stored within memory.
 Yet, in performance portability libraries like RAJA and Kokkos, where one codebase is used for machines with different architectures, there are not yet tools for transforming the layout of data between parts of a computation. 
 Thus, if a developer wants to introduce these optimizations, they are left in a time-consuming, error-prone situation --- further exacerbated by the potential for data layout transformations to not be worth the overhead.
 
-Our contribution, \FormatDecisions, remedies this situation by combining declarative format specification  interface with runtime performance modeling to supplement user directives.
+This chapter's contribution, \FormatDecisions, remedies this situation by combining declarative format specification  interface with runtime performance modeling to supplement user directives.
 Integrated directly into the performance portability library RAJA, but possible in any library with computation objects and a data View-like abstraction, \FormatDecisions{} provides a flexible interface for quick exploration of data layout changes. 
 Additionally, \FormatDecisions{} uses an ILP formulation to optionally identify other profitable transformations, \enquote{filling in} the user specification.
 
