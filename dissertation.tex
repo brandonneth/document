@@ -53,10 +53,11 @@ openany, % eliminates all extra blank pages from entire document
 \newcommand{\chapterabstract}[1]{
     \begin{quote}
         \singlespacing\small
-        \rule{10.5cm}{1pt}
+        \rule{13cm}{1pt}
+
         #1
         \vskip-4mm
-        \rule{10.5cm}{1pt}
+        \rule{13cm}{1pt}
 \end{quote}}
 
 \usepackage{lineno}
@@ -101,7 +102,7 @@ escapeinside={<@}{@>}
 \usepackage{xspace}
 \newcommand{\FormatDecisions}[0]{{\textsc{FormatDecisions}}}
 \newcommand{\su}[1]{{#1$\times$}}
-\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}{../sparseEval}}
+\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}{../sparseEval}{./graphics/SparseRAJA}}
 
 \usepackage[subtle]{savetrees}
 \vbadness=18000
@@ -160,12 +161,12 @@ escapeinside={<@}{@>}
 
 \begin{document}
 
-%\include{FrontMatter.tex}
-%\include{Introduction.tex}
+\include{FrontMatter.tex}
+\include{Introduction.tex}
 
-%\include{RAJALC.tex}
+\include{RAJALC.tex}
 
-%\include{FormatDecisions.tex}
+\include{FormatDecisions.tex}
 
 %\include{SparseHistory.tex}
 \include{SparseRAJA.tex}

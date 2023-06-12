@@ -1,5 +1,4 @@
-\chapter{Sparse Transformations}
-\label{chap:sparseRAJA}
+\chapter{Sparse Transformations}\label{chap:sparseRAJA}
 \chapterabstract{
 Performance portability libraries like RAJA and Kokkos are a growing approach to the maintainability problems of large applications. 
 While these libraries can productively represent and efficiently execute many computations, they lack robust support for an important type: sparse computations. 
@@ -15,6 +14,7 @@ Two emerge specifically: constructing / traversing a sparse iteration space and 
 For the problem of the iteration space and schedule, I use leader and follower iterators to represent and traverse sparse iteration spaces, built on the symbolic iteration space capabilites I developed to support dense triangular iteration spaces. 
 This approach supports coordinate storage, and I show how it can be extended to support compressed row and column storage formats. 
 To efficiently traversal of the sparse structures, I incorporate an expected next access cache, inspired by prefetching systems.
+
 }
 
 
@@ -143,13 +143,25 @@ void CSR_matrix_vector_multiply(CSRView2D A, View1D x, View1D y) {
 }
 \end{lstlisting}
 \end{figure}
-\begin{figure}
-%\includegraphics{FormatDiagram.pdf}
-\caption{Dense, COO, and CSR storage representations of the same data.}
-\label{FormatDiagram}
-\end{figure}
+\begin{figure*}
+  \centering
+  \begin{subfigure}{0.45\textwidth}
+    \includegraphics[page=1,width=\textwidth]{FormatDiagram.pdf}
+    \caption{Dense represention of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:Dense}
+  \end{subfigure}
+  \begin{subfigure}{0.45\textwidth}
+    \includegraphics[page=2,width=0.95\textwidth]{FormatDiagram.pdf}
+    \caption{Coordinate storage represention of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:COO}
+  \end{subfigure}
 
-Figure~\ref{DenseAndSparseMV} shows C-like implementations of the SpMV kernel using dense and sparse data formats.
+  \begin{subfigure}[c]{0.45\textwidth}
+    \includegraphics[page=3,width=0.95\textwidth]{FormatDiagram.pdf}
+    \caption{Compressed sparse row represention of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:CSR}
+  \end{subfigure}
+\caption{Dense, COO, and CSR storage representations of the same data.}\label{FormatDiagram}
+\end{figure*}
+
+Listing~\ref{DenseAndSparseMV} shows C-like implementations of the SpMV kernel using dense and sparse data formats.
 The first implementation shows the computation written for a dense matrix.
 The second implementation shows the computation written for coordinate storage (COO). 
 In this format, the View contains three vectors: one for the row indices, one for the column indices, and one for the nonzero values.
@@ -206,7 +218,7 @@ Requiring a search on every access to a sparse structure is prohibitively expens
 Specifically, if the computation uses a schedule and format that access and store the data in exactly the same order, then the search can be avoided entirely.
 Instead, the index into the View's data is updated incrementally, processing the data in order.
 
-In implementations written by hand or using code-generating approaches, this incremental update is hard-coded into the computation.
+In implementations written by hand or with code-generating approaches, incremental updates are hard-coded into the loop's implementation, either by the programmer or the compiler.
 Each format requires a unique implementation that traverses its entries in the appropriate order, so code written for one format will not work for another.
 My approach incorporates parts of this incremental update technique without requiring the code to be rewritten for each desired format. 
 This involves maintaining a field in the SparseView that tracks its most recent access.
@@ -216,8 +228,7 @@ If not, the view performs the search as to return the correct value.
 This approach, a sort of software prefetching, does incur the overhead of a comparison between the current access and the expected access, but this $O(D)$ check is much faster than the $O(D*\log(NNZ))$ search.
 The hypothesis is that, with sufficient optimization, this approach can provide comparable performance to a hand-implemented version of the code.
 
-\section{Constructing a Sparse Iteration Space}
-\label{sec:sparseIterspace}
+\section{Constructing a Sparse Iteration Space}\label{sec:sparseIterspace}
 Omitting unnecessary iterations is key to the performance of a sparse computation. 
 
 
@@ -298,8 +309,8 @@ This modified approach essentially constructs the CSR compressed dimension as pa
 This approach is perfect for loops that have initialization and finalization statements, such as the summing loop nest discussed above. 
 
 
-\section{Traversing Sparse Data Efficiently}
-\label{sec:SparseAccess}
+\section{Traversing Sparse Data Efficiently}\label{sec:SparseAccess}
+
 Even with the iteration space reduced to only the necessary points, acceptable performance depends on traversing the sparse data structures efficiently without requiring a search on each access.
 Here, the tradeoff is between flexibility in supporting types of computations and the performance benefits of more aggressive specialization.
 
@@ -378,7 +389,7 @@ This is because the same index type has to be used for both sparse Views.
 
 
 \begin{figure}
-\begin{lstlisting}[caption={Reference implementation for the Specialized Index Types approach.}, label=specializedIndexImp]
+\begin{lstlisting}[caption={Reference implementation for the Specialized Index Types approach.}, label=specializedIndexImpl]
 
 ElemetType access(int i0, int i1) {
   return searchAccess(i0,i1);
@@ -399,7 +410,7 @@ Such an approach could also mantain multiple expected access checks, one for eac
 
 \section{Prototype Implementation}
 
-I implemented the approaches discussed in the previous two sections into a prototype for sparse computation support within RAJA.
+I implemented the approaches discussed in the previous two sections into a prototype for sparse computation support within RAJA.~
 Here, I discuss the interface and algorithms for constructing sparse data structures, iteration spaces, and computations.
 % Constraints
 % \begin{itemize}
@@ -410,7 +421,7 @@ Here, I discuss the interface and algorithms for constructing sparse data struct
 
 \subsection{Sparse Data Containers}
 
-With the prototype's limitation to coordinate storage, two functions are supported that create sparse data structures: \verb.make_sparse_view. and \verb.make_permuted_sparse_view..
+With the prototype's limitation to coordinate storage, two functions support the creation of sparse views: \verb.make_sparse_view. and \verb.make_permuted_sparse_view..
 The former is a wrapper of the latter, generating a SparseView with the identity permutation.
 For an $N$ dimensional SparseView, there are $N+2$ parameters to \verb.make_permuted_sparse_view..
 The first $N$ parameters are vectors containing the index values for each dimension. 
@@ -512,7 +523,8 @@ auto make_sparse_kernel(auto denseSegs, auto sparseView, auto loopBodyTuple) {
   auto allAccesses = symbolically_evaluate(symExecLambda);
   auto sparseAccess = findAccessTo(sparseView, allAccesses);
 
-  auto sparseSegs = make_sparse_iteration_space<KernelPolicy>(denseSegs, sparseAccess);
+  auto sparseSegs = make_sparse_iteration_space<KernelPolicy>(denseSegs, 
+  sparseAccess);
 
   return make_kernel<KernelPolicy>(sparseSegs, loopBodyTuple);
 }
@@ -521,16 +533,15 @@ auto make_sparse_kernel(auto denseSegs, auto sparseView, auto loopBodyTuple) {
 
 Alternatively, the programmer can construct the sparse iteration space themselves, then use the standard \verb.make_kernel. to generate the computation over the sparse iteration space.
 
-\section{Evaluation}
-\label{sec:sparseEval}
-To evaluate the prototype, I compare the performance of three versions of three benchmarks: sparse matrix vector multiplication (SpMV), Gauss-Seidel iteration (GauSei), and incomplete Cholesky factorization (InCholFact).
+\section{Evaluation}\label{sec:sparseEval}
+To evaluate the prototype, I compare the performance of different versions of three benchmarks: sparse matrix vector multiplication (SpMV), Gauss-Seidel iteration (GauSei), and incomplete Cholesky factorization (InCholFact).
 The first version, \dense, implements the computation on dense data. 
 The second version, \specialized, is specialized for a particular sparse format by hand. 
 The third version, \sparseraja, implements the computation using the prototype support described above.
 In terms of representation, the expectation is that the \dense{} and \sparseraja{} versions of the code will look similar, both varying significantly from the format-specific implementation of the \specialized{} version.
 In terms of performance, the \dense{} version is expected to be the outlier, as it executes many more iterations than the \sparseraja{} and \specialized{} versions.
 
-The evaluation process here is iterative, progressing through a loop of running the evaluation, profiling using hpctoolkit~\cite{todo}, identifying potential optimizations, and implementing them. 
+The evaluation process here is iterative, progressing through a loop of running the evaluation, profiling using hpctoolkit~\cite{adhianto2010hpctoolkit}, identifying potential optimizations, and implementing them. 
 This is in service of evaluating the overall question of the feasibility of acheiving comparable performance to the hand-specialized variants.
 
 
@@ -638,7 +649,7 @@ Gauss-Seidel is a tricky kernel because of its data dependences.
 The results of earlier iterations change values used in subsequent ones, meaning that the order of the iterations cannot be changed arbitrarily. 
 For this reason, GauSei cannot be represented as tensor algebraic expressions, placing it outside TACO's space of expressible computations~\cite{}.
 
-Listings~\ref{DenseGauSei},~\ref{SpecializedGauSei}, and ~\ref{SparseRAJAGauSei} show the three reference implementations of the GauSei kernel.
+Listings~\ref{DenseGauSei},~\ref{SpecializedGauSei}, and~\ref{SparseRAJAGauSei} show the three reference implementations of the GauSei kernel.
 Because of the significant variations between the three implementations, I also show a C-like reference implementation in Listing~\ref{CppGauSei}.
 
 One such variation appears in the \specialized{} version. 
@@ -824,9 +835,8 @@ for(i0 = 0; i0 < N; i0++) {
 
 \subsubsection{SpMV}
 \begin{figure}
-\includegraphics{SpMV_lines_perf.pdf}
-\caption{Matrix vector multiplication execution times for different variants and sparse matrix densities. Each subplot charts a different dimension length. Both x and y are log scale. Lower is better.}
-\label{SpMVPerformance}
+\includegraphics[width=0.5\textwidth]{SpMV_lines_perf.pdf}
+\caption{Matrix vector multiplication execution times for different variants and sparse matrix densities. Each subplot charts a different dimension length. Both x and y are log scale. Lower is better.}\label{SpMVPerformance}
 \end{figure}
 Figure~\ref{SpMVPerformance} shows the performance evaluation results for the \SpMV{} kernel. 
 The three lines represent the different variants.
@@ -868,30 +878,26 @@ This may be caused by specialized version doing a simpler 1 dimensional index ca
 
 \subsubsection{GauSei}
 \begin{figure}
-  \includegraphics{GauSei_lines_perf_COO.pdf}
-  \caption{Gauss-Seidel iteration execution times for different variants and sparse matrix densities. Each subplot charts a different dimension length. Both x and y are log scale. Lower is better. The sparseRAJA variant uses standard coordinate storage.}
-\label{GauSeiPerfCOO}
+  \includegraphics[width=\textwidth]{GauSei_lines_perf_COO.pdf}
+  \caption{Gauss-Seidel iteration execution times for different variants and sparse matrix densities. Each subplot charts a different dimension length. Both x and y are log scale. Lower is better. The sparseRAJA variant uses standard coordinate storage.}\label{GauSeiPerfCOO}
 \end{figure}
 \begin{figure}
-\includegraphics{GauSei_ratios_perf_COO.pdf}
-\caption{Ratio of \sparseraja{} variant execution time to \specialized{} variant execution time. Each subplot charts a different dimension length. Lower is better. Values greater than 1 indicate that the \sparseraja{} variant is slower. The \sparseraja{} variant uses standard coordinate storage.}
-\label{GauSeiRatioCOO}
+\includegraphics[width=\textwidth]{GauSei_ratios_perf_COO.pdf}
+\caption{Ratio of \sparseraja{} variant execution time to \specialized{} variant execution time. Each subplot charts a different dimension length. Lower is better. Values greater than 1 indicate that the \sparseraja{} variant is slower. The \sparseraja{} variant uses standard coordinate storage.}\label{GauSeiRatioCOO}
 \end{figure}
 
 \begin{figure}
-\includegraphics{GauSei_lines_perf_COO.pdf}
-\caption{Gauss-Seidel iteration execution times for different variants and sparse matrix densities. Each subplot charts a different dimension length. Both x and y are log scale. Lower is better. The \sparseraja{} variant uses the prototype DIAG format.}
-\label{GauSeiPerfDIAG}
+\includegraphics[width=\textwidth]{GauSei_lines_perf_DIAG.pdf}
+\caption{Gauss-Seidel iteration execution times for different variants and sparse matrix densities. Each subplot charts a different dimension length. Both x and y are log scale. Lower is better. The \sparseraja{} variant uses the prototype DIAG format.}\label{GauSeiPerfDIAG}
 \end{figure}
 \begin{figure}
-\includegraphics{GauSei_ratios_perf_COO.pdf}
-\caption{Ratio of \sparseraja{} variant execution time to \specialized{} variant execution time. Each subplot charts a different dimension length. Lower is better. Values greater than 1 indicate that the \sparseraja{} variant is slower. The \sparseraja{} variant uses standard coordinate storage.}
-\label{GauSeiRatioDIAG}
+\includegraphics[width=\textwidth]{GauSei_ratios_perf_DIAG.pdf}
+\caption{Ratio of \sparseraja{} variant execution time to \specialized{} variant execution time. Each subplot charts a different dimension length. Lower is better. Values greater than 1 indicate that the \sparseraja{} variant is slower. The \sparseraja{} variant uses standard coordinate storage.}\label{GauSeiRatioDIAG}
 \end{figure}
 Figure~\ref{GauSeiPerfCOO} shows the initial performance of the SparseRAJA implementation using the COO storage format.
 Figure~\ref{GauSeiRatioCOO} shows the ratio of the SparseRAJA variant execution time to the specialized variant execution time.
-This 
-From the early profiling rounds of the \GauSei kernel, nearly 90\% of the execution time is spent in the SparseView's search-based random access function.
+The geometric mean speedup of the SparseRAJA version relative to the specialized version is $0.228$, between a 4 and 5x slowdown. 
+From the early profiling rounds of the \GauSei{} kernel, nearly 90\% of the execution time is spent in the SparseView's search-based random access function.
 This is caused by the comparatively low expected access cache hit rate, driven by the irregular access patterns in the kernel.
 First, each of the diagonal entries is skipped during the execution of the inner loop nest.
 After each diagonal iteration, where no access is made because the conditional is false, the expected access is still the diagonal entry. 
@@ -903,21 +909,17 @@ Barring the occasional circumstance where the diagonal is the last or only value
 Here we encounter a situation where a different data format would be beneficial.
 For example, a format that additionally stores a vector of the diagonal entries separately from the other entries.
 On an access, if the access is for a diagonal, it indexes directly into the vector, otherwise following the usual pattern of prefetching and searching.
-Figure~\ref{GauSeiPerfDIAG} shows the perforamnce of a variant using this storage format instead of the general COO format compared to the specialized hand-implemented variant.
-
-
-\section{Limitations and Future Directions}
-
-\subsection{Computational Complexity}
-The biggest barrier to sufficient performance is data access. Without any optimization, each access to a sparse view requires searching. One search is required for each dimension in the view, so the worst case complexity for a D dimensional view with NNZ nonzero entries is $O( D*log(NNZ))$, compared to $O(D)$ for a dense view. 
-
-Carefully written hand-implementations of sparse codes can achieve an O(1) access complexity by selecting a schedule and format that access data in the same order. This is achieved by incrementally updating the indices so that the data is traversed in the order it is stored. 
-
+Figure~\ref{GauSeiPerfDIAG} shows the perforamnce of a variant using this DIAG storage format instead of the general COO format compared to the specialized hand-implemented variant.
+Here, the geometric means speedup is $0.182$, between a 5 and 6x slowdown, and slower than the coordinate storage variant. 
+This may be caused by the additional overhead of checking each if each access is to the diagonal.
 
 
 \section{Conclusion}
 
-
+This chapter explored incorporating support for sparse computations and data formats into the RAJA performance portability library.
+By treating the sparsity of the data as an independent component of the computation's specification, the approach enables concise and format-independent programming. 
+However, the overhead of maintaining and updating the necessary data structures for kernel execution, especially updating the sparse iterative values, caused performance to suffer.
+While this approach may be feasible as a foundation for introducing schedule and data transformations for sparse computations, more work is needed to bring the performance of the system within the range of hand-implemented versions.
 
 
 
