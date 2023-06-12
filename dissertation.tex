@@ -1,5 +1,24 @@
-\documentclass{report}
-\usepackage[left=1in, right=1in, top=1in, bottom=1in]{geometry}
+\documentclass[
+12pt, % The default document font size, options: 10pt, 11pt, 12pt
+%oneside, % Two side (alternating margins) for binding by default, uncomment to switch to one side
+english, % ngerman for German
+doublespacing, % Single line spacing (singlespacing), alternatives: onehalfspacing or doublespacing
+%draft, % Uncomment to enable draft mode (no pictures, no links, overfull hboxes indicated)
+%nolistspacing, % If the document is onehalfspacing or doublespacing, uncomment this to set spacing in lists to single
+liststotoc, % Uncomment to add the list of figures/tables/etc to the table of contents
+%toctotoc, % Uncomment to add the main table of contents to the table of contents
+%parskip, % Uncomment to add space between paragraphs
+%nohyperref, % Uncomment to not load the hyperref package
+headsepline, % Uncomment to get a line under the header
+chapterinoneline, % Uncomment to place the chapter title next to the number on one line
+%consistentlayout, % Uncomment to change the layout of the declaration, abstract and acknowledgements pages to match the default layout
+openany, % eliminates all extra blank pages from entire document
+]{DoctoralThesis}
+
+
+
+\usepackage[table]{xcolor}
+
 \usepackage{array} 
 \usepackage{comment}
 \usepackage{graphicx}
@@ -7,8 +26,7 @@
 \usepackage{csquotes}
 \usepackage{balance}
 \usepackage{setspace}
-\usepackage[table]{xcolor}
-\usepackage{makecell}
+
 \usepackage{lstautogobble}
 \usepackage{subcaption}
 
@@ -96,17 +114,61 @@ escapeinside={<@}{@>}
 \newcommand{\GauSei}[0]{{GauSei}}
 \newcommand{\InCholFact}[0]{{InCholFact}}
 
+
+
+\thesistitle{Type the title of your thesis here} % Your thesis title, this is used in the title, committee approval and abstract pages, print it elsewhere with \ttitle
+
+\chair{Type the name of your chair here} % Your dissertation chair's name, this is used in the title, abstract and committee approval pages, print it elsewhere with \chairname
+
+\cochair{Type the name of your co-chair here} % Your dissertation co-chair's name, this is not currently used anywhere in the template, but would be used in the title and committee approval page, print it elsewhere with \cochairname
+
+\examiner{Type the name of your examiner here} % Your examiner's name, this is not currently used anywhere in the template, print it elsewhere with \examname
+
+\degree{Type the name of your degree here} % Your degree name, this is used in the title page and abstract, print it elsewhere with \degreename
+
+\author{Type your name here} % Your name, this is used in the title page and abstract, print it elsewhere with \authorname
+
+\addresses{Type your address here} % Your address, this is not currently used anywhere in the template, print it elsewhere with \addressname
+
+\subject{Type your subject area here} % Your subject area, this is not currently used anywhere in the template, print it elsewhere with \subjectname
+
+\keywords{Type keywords here} % Keywords for your thesis, this is not currently used anywhere in the template. However, you may want to use it following your abstract, print it elsewhere with \keywordnames
+
+\university{University of Arizona} % Your university's name and URL, this is used in the title page and abstract, print it elsewhere with \univname
+
+\department{Type the name of your department here} % Your department's name and URL, this is used in the title page and abstract, print it elsewhere with \deptname
+
+\group{\href{http://researchgroup.university.com}{Research Group Name}} % Your research group's name and URL, this is not currently used anywhere in the template, print it elsewhere with \groupname
+
+\facultyA{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. Do not use this for your COMMITTEE CHAIR This is used in the committee approval page, print it elsewhere with \facnameA
+
+\facultyB{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This is used in the committee approval page, print it elsewhere with \facnameB
+
+\facultyC{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This may optionally be added to the committee approval page when number of committee members requires it, print it elsewhere with \facnameC
+
+\facultyD{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This may optionally be added to the committee approval page when number of committee members requires it, print it elsewhere with \facnameD
+
+\defense{Type defense date here} % This should have the long date format of your scheduled defense, print it elsewhere with \defensedate
+
+\AtBeginDocument{
+\hypersetup{pdftitle=\ttitle} % Set the PDF's title to your title
+\hypersetup{pdfauthor=\authorname} % Set the PDF's author to your name
+\hypersetup{pdfkeywords=\keywordnames} % Set the PDF's keywords to your keywords
+\hypersetup{hidelinks} % Set all hyperlinks standard color text
+}
+
+
 \begin{document}
 
-\include{Introduction.tex}
+%\include{FrontMatter.tex}
+%\include{Introduction.tex}
 
+%\include{RAJALC.tex}
 
-\include{RAJALC.tex}
-
-\include{FormatDecisions.tex}
+%\include{FormatDecisions.tex}
 
 %\include{SparseHistory.tex}
-%\include{SparseRAJA.tex}
+\include{SparseRAJA.tex}
 
 
 \include{Conclusion.tex}
@@ -116,153 +178,6 @@ escapeinside={<@}{@>}
 
 \bibliographystyle{abbrv}
 \bibliography{dissertation.bib}
-
-
-
-% \section{RAJA's Execution Model, In Depth}
-
-% While running, a kernel execution's state is maintained in a \verb.LoopData. object.
-% It contains a wrapped segment tuple, a param tuple, a resource object, and a parameter pack of body functors.
-% Here, we are interested in the process of wrapping the segment tuple. 
-% This process, implemented in \verb.make_wrapped_tuple., converts the tuple of segments to a tuple of \verb.Span. objects. 
-% Each \verb.Span. is initialized with the \verb.begin(). and \verb.end(). results of the corresponding entry of the segment tuple.
-% The \verb.Span. structure has two template arguments, an iterator type and an index type.
-
-% The tuple of \verb.Span. objects are referred to throughout kernel execution, through its own iterator interface. 
-% This interface either returns one of the iterators passed to its initialization, or a operator applied to it.
-% \verb.front. and \verb.back. dereference, \verb.back. and \verb.size. apply subtraction of integer and iterator, respectively.
-% Finally, \verb.operator[]. passes the operator on to the contained begin iterator.
-
-% \textit{The challenge here is creating a single segment tuple type that can represent the result of any of the possible transformations.}
-
-% Now, why was this not a problem when the dimensionalities are equal? 
-% Because the \textit{type} order of the tuple was always the same--one LeadSegment followed by N-1 FollowSegments--even while the dimension indices of the segments changed with the analysis results.
-% With the inequality cases, the order of the different segment types changes. 
-% Concretely, the difference is between the type \verb.tuple<DenseSegment,LeadSegment,FollowSegment>. and \verb.tuple<LeadSegment,FollowSegment,DenseSegment>..
-
-% One option forward is to reduce the number of types. 
-% However, see that we would have to reduce the number of types to one.
-% If we represent DenseSegment and LeadSegment with one type, say \verb.DLSegment., we still must reconcile the difference between \verb.tuple<DLSegment,DLSegment,FollowSegment>. and \verb.tuple<DLSegment,FollowSegment,DLSegment>..
-
-% Call this single segment type the \verb.SparseSegment..
-% This type needs to function as a wrapper for the different segment functionalities that the system will support.
-% It must have \verb.begin(). and \verb.end(). methods that create iterator objects, all still of the same type.
-% Call this iterator type  \verb.SparseIterator..
-
-% The \verb.SparseIterator. type needs to support the bracket operator and the minus operator. 
-% Here, the logic of the different types of segments can finally show itself through virtualization.
-% Here is a sketch of the \verb.SparseIterator. operators:
-% \begin{lstlisting}
-% struct SparseIteratorImpl {
-%   virtual idx_t & access(size_t i);
-%   virtual idx_t index();
-% }
-
-% struct DenseIteratorImpl : SparseIteratorImpl {
-%   camp::idx_t value;
-%   idx_t & access(size_t i) {
-%     return value + i;
-%   }
-%   idx_t* index() {return value;}
-% }
-
-% struct LeadIteratorImpl : SparseIteratorImpl {
-%   std::vector<idx_t> dimension;
-%   idx_t offset;
-%   size_t * currVal;
-%   idx_t & access(size_t i) {
-%     *currVal = i;
-%     return dimensionIterator[offset + i];
-%   }
-%   idx_t index() {
-%     return offset;
-%   }
-% }
-
-% struct FollowIteratorImpl : SparseIteratorImpl {
-%   std::vector<idx_t> dimension;
-%   idx_t offset;
-%   LeadSegmentImpl * leader;
-%   idx_t & access(size_t i) {
-%     return dimension[offset + leader->currVal + i];
-%   }
-%   idx_t index() {
-%     return offset;
-%   }
-% }
-
-% struct SparseIterator {
-%   SparseIteratorImpl * impl;
-%   idx_t & operator[](size_t i) {
-%     return impl->access(i);
-%   }
-%   idx_t operator - (SparseIterator other) {
-%     return 
-%   }
-% }
-
-% struct SparseSegmentImpl {
-%   virtual SparseIterator begin();
-%   virtual SparseIterator end();
-% }
-
-% struct DenseSegmentImpl : SparseSegmentImpl {
-%   idx_t low, high;
-%   DenseIteratorImpl * implLow;
-%   DenseIteratorImpl * implHigh;
-%   DenseSegmentImpl(idx_t l, idx_t h) : low(l), high(h) {
-%     implLow = new DenseIteratorImpl(low);
-%     implHigh = new DenseIteratorImpl(high);
-%   }
-%   SparseIterator begin() {
-%     return SparseIterator(implLow);
-%   }
-%   SparseIterator end() {
-%     return SparseIterator(implHigh);
-%   }
-% }
-
-% struct LeadSegmentImpl: SparseSegmentImpl {
-%   std::vector<idx_t> dimension;
-%   LeadIteratorImpl * implLow = new LeadIteratorImpl(dimension, 0, &currVal);
-%   LeadIteratorImpl * implHigh = new LeadIteratorImpl(dimension, dimension.size(), &currVal);
-%   idx_t currVal;
-%   SparseIterator begin() {
-%     return SparseIterator(implLow);
-%   }
-%   SparseIterator end() {
-%     return SparseIterator(implHigh);
-%   }
-% }
-
-% struct FollowSegmentImpl : SparseSegmentImpl {
-%   std::vector<idx_t> dimension;
-%   LeadSegmentImpl leader;
-%   FollowIteratorImpl * implLow = new FollowIteratorImpl(dimension, 0, &leader);
-%   FollowIteratorImpl * implHigh = new FollowIteratorImpl(dimension, 1, &leader);
-
-%   SparseIterator begin() {
-%     return SparseIterator(implLow);
-%   }
-%   SparseIterator end() {
-%     return SparseIterator(implHigh);
-%   }
-% }
-
-% struct SparseSegment {
-%   SparseSegmentImpl * impl;
-%   SparseIterator begin() {
-%     return impl->begin();
-%   }
-%   SparseIterator end() {
-%     return impl->end();
-%   }
-% }
-% \end{lstlisting}
-
-
-
-
 
 
 
