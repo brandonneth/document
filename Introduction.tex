@@ -6,27 +6,88 @@ Computer simulation can help provide this confidence.
 
 When developing these types of applications, three competing concerns need balanced. 
 First is developer productivity.
-From the earliest days of computing~\cite{backus1957fortran} to today, code has been expensive to write.
+From the earliest days of electronic computing~\cite{backus1957fortran} to today, code has been expensive to write.
 High-productivity languages like Python excel in the realm of developer productivity.
 While the actual execution of the code is slow, the ease of writing, maintaining, and updating the code can make up for the slow performance.
 However, in many situations, such as HPC, the code also needs to run quickly.
-For instance, when simulating extreme weather events such as hurricanes~\cite{fu2017redesigning}, time is of the essence. 
-A simulation that takes three days to report what the state of events will be in two days is outperformed by a glance out of a window.
 The second competing concern is exactly this: application performance.
 There are often real-world constraints on how long code execution can take.
-Consider the automatic breaking system in many modern vehicles.
+Consider the automatic braking system in many modern vehicles.
 These systems do not have the luxury of running slowly, else they risk the safety of their passengers.
 On the other end, large simulation codes need to make the most out of the limited time they are allotted on HPC systems.
-Writing fast code runs at odds with programmer productivity in part because achieving good application performance normally requires the use of languages like C++ and Fortran, languages rarely lauded for their high developer productivity.
+Writing fast code runs at odds with programmer productivity in part because achieving good application performance normally requires the use of languages like C++ and Fortran, languages rarely lauded for developer productivity.
 The final competing concern, cross-system portability, runs in tension with both application performance and programmer productivity.
 Computing hardware is diversifying, meaning code optimized for one system may perform poorly on another.
 Finding one set of optimizations that give good performance across different systems is not straightforward, and not even always possible.
 The alternative is to maintain multiple versions of the same code base, each specially optimized for the system it is designed for.
 
 In developing HPC applications, DoE places emphasis on creating codes that run performantly on many different systems.
-Performance portability libraries like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{yakl} address this problem by surfacing the performance ``knobs'' that an engineer can use to tune an application for a particular system. 
-While powerful, this approach focuses on tuning each kernel independently, leaving out opportunities for optimizations that are applied across kernels.
-This dissertation explores how this approach to the problem of portable perforance can be strengthened, introducing support for inter-loop schedule (Chapter~\ref{chap:RAJALC}) and data (Chapter~\ref{chap:FormatDecisions}) transformations, as well as support for sparse computations with dependences (Chapter~\ref{chap:sparseRAJA}).
+Performance portability libraries like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} address this problem by surfacing the performance ``knobs'' that an engineer can use to tune an application for a particular system. 
+These include loop schedule transformations --- like loop interchange, tiling, vectorization, OpenMP threading, offloading to accelerators --- and global data format transformations.
+While powerful, this approach focuses on tuning each loop independently, leaving out opportunities for optimizations that are applied across loops.
+A programmer who wishes to apply valuable cross-loop optimizations like loop fusion~\cite{todo}, overlapped tiling~\cite{bertolacci2019using,todoCathySCPaper, todoOVerlappedTilingIntroPaper}, or inter-loop layout changes~\cite{kennedy1995automatic,kennedy1998automatic} cannot do so without breaking the abstractions of the performance portability library.
+This sacrifice of portability for performance is also present for a programmer who wishes to express parts of a computation that work with sparse data.
+This dissertation seeks to remedy this problem, introducing abstractions to support cross-loop schedule and data transformations and laying the foundation for native support for sparse computations within the RAJA library.
+
+\section{Programming with a Performance Portability Libraries}
+
+\begin{figure}
+\begin{lstlisting}[]
+
+auto stencilLambda = [=](int i, int j) {
+  B(i,j) = 0.2 * (A(i,j) + A(i-1,j) + A(i+1, j) + A(i,j-1) + A(i,j+1));
+};
+
+auto iDimension = RangeSegment(1,N-1);
+auto jDimension = RangeSegment(1,M-1);
+auto iterationSpace = make_tuple(iDimension,jDimension);
+
+using SequentialPolicy = KernelPolicy<
+  statement::For<0,seq_exec,
+    statement::For<1,seq_exec,
+      statement::Lambda<0>
+    >
+  >
+>;
+
+kernel<SequentialPolicy>(iterationSpace, stencilLambda);
+
+using OUTERPARALLEL = KernelPolicy<
+  statement::For<0,omp_parallel_for_exec,
+    statement::For<1,seq_exec,
+      statement::Lambda<0>
+    >
+  >
+>;
+
+using INTERCHANGED = KernelPolicy<
+  statement::For<1,seq_exec,
+    statement::For<0,seq_exec,
+      statement::Lambda<0>
+    >
+  >
+>;
+
+\end{lstlisting}
+\end{figure}
+\todo{example demonstrating the knobs and how RAJA enables P3.}
+
+\section{Cross-Loop Program Transformation}
+
+\todo{related work that does inter-loop scheduling, data transformations, and sparse format stuff}
+
+\todo{Example of doing the three types of codes in RAJA or plain C++}
+
+\section{Summary of Contributions}
+
+\todo{Code examples using my approaches}
+
+\todo{Enumerated problems that had to be solved to get there}
+
+\todo{Contrubiton stuff that I have already}
+
+
+
 
 \section{Performance Portability Libraries}
 \begin{comment}
