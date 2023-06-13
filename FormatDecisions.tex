@@ -1,9 +1,19 @@
 
-\chapter{Data Transformations}
-\label{chap:FormatDecisions}
+\chapter{Data Transformations}\label{chap:FormatDecisions}
 
 \def\@textbottom{\vskip \z@ \@plus 1pt}
 
+
+On today's high performance architectures, using the memory hierarchy effectively is a great challenge with a great reward.
+When performance considerations --- architecture, memory hierarchy configuration, even input data characteristics --- are hard-coded into the application, improved memory performance comes at the cost of maintainability and portability. 
+This is especially relevant for schedule and data optimizations that are applied across loops, where the optimization obscures the underlying operation of the code.
+To address this problem, performance portability libraries like RAJA, Kokkos, and YAKL provide abstractions for controlling how loops are scheduled/parallelized and how data is laid out initially.
+However, they do not support changing data layouts between loops without significant manual intervention.
+Our focus is on data layout transformations among canonical data layouts and the challenges inherent in enabling their high-level control within performance portability libraries.
+First, we introduce programming abstractions into the RAJA library to collect and apply data format transformations between kernels.
+Then, we incorporate a built-in performance model for as-automated-as-desired transformation selection.
+Additionally, we extend RAJA's iteration space description to support loops with non-rectangular iteration spaces, expanding RAJA's expressive capability.
+Using our approach, we achieve similar performance improvement to hand-implemented data layout optimizations with significantly fewer code changes across seven key benchmarks and one application case study.
 \section{Introduction}
 
 The gap between CPU speeds and memory latency recurs throughout computing history, prompting ever-more complex architectural solutions.

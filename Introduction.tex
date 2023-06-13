@@ -30,53 +30,233 @@ This sacrifice of portability for performance is also present for a programmer w
 This dissertation seeks to remedy this problem, introducing abstractions to support cross-loop schedule and data transformations and laying the foundation for native support for sparse computations within the RAJA library.
 
 \section{Programming with a Performance Portability Libraries}
+Performance portabile libraries are driven by the need to create modularized and easily-tuned code.
+This is achieved through a process of decomposing the computation into seperable parts.
+While the specifics of this decomposition differ across libraries, they share key components.
+Broadly, these components appear as data abstractions and operation/execution abstractions.
+Here, I demonstrate these abstractions using a 5-point stencil computation, broken into Listings~\ref{stencilData},~\ref{stencilKernel}, and~\ref{stencilSchedule}.
+This computation uses two $N \times M$ arrays \verb.A. and \verb.B..
 
+
+\subsubsection{Data Abstractions}
 \begin{figure}
-\begin{lstlisting}[]
+\begin{lstlisting}[caption={Data declaration using RAJA multi-dimensional data abstractions, called Views. Changing a View's layout only requires changing the second argument in its constructor.}, label=stencilData]
+using namespace RAJA;
 
+//Create an array with the dimension extents...
+std::array<size_t, 2> dimLengths = {N,M};
+
+//Create the layout type...
+auto rowMajor = make_layout(dimLengths, {0,1}); //dim0, then dim1
+auto colMajor = make_layout(dimLengths, {1,0}); //dim1, then dim0
+
+//Then initialize the Views...
+
+//with row-major storage
+View<double,2> A(new double[N*M], rowMajor);
+View<double,2> B(new double[N*M], rowMajor);
+
+//OR
+
+//with column-major storage
+View<double,2> A(new double[N*M], colMajor);
+View<double,2> B(new double[N*M], colMajor);
+\end{lstlisting}
+\end{figure}
+
+Multi-dimensional data is exceedingly common in simulation codes.
+However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
+Thus, any multi-dimensional representation must be mapped to the 1-dimesional nature of the hardware.
+Usually, this is achieved by breaking the data into one-dimensional strips and storing each strip in sequence.
+Different ways to break the data into strips produce different orders of elements within memory.
+Two of these layouts that are well-known are the two dimensional column-major and row-major storage formats.
+Here, the strips of two-dimensional data are either the columns or the rows.
+
+Called a View in RAJA and Kokkos and an Array in YAKL, multidimensional data structures are a key abstraction through which these embedded libraries surface portability controls to the programmer.
+When tuning an application for a new system, changing the layout of data in memory can have large performance implications.
+These differences are especially relevant between different processor types, where a data layout that performs well on a CPU is not best for a GPU.
+It can also impact performance between two CPUs because of threading and cache behaviors~\cite{trott2021kokkos}.
+
+
+Traditional approaches to representing multi-dimensional data, such as the array of pointers or vector of vectors, do not admit an easy data layout change.
+This is due to the high degree of coupling between the layout and the method of data access. 
+For example, using these approaches, an access to the $(i,j)$th entry of a two dimensional structure will look like this: \verb.A[i][j]..
+Should the programmer want to try a column-major ordering instead of the default row-major, their only option is to completely transpose the data structure.
+This process starts with the cumbersome but managable task of redeclaring the sizes of each dimension in the structure's initializiation, switching the dimensions' extents.
+Then, every single access to the structure needs to be changed. 
+All instances \verb.A[i][j]. must become \verb.A[j][i]..
+This is a enormous task, and one where well-camouflaged bugs are born. 
+In a paragraph of prose, \verb.[i][j]. is easily distinguished from \verb.[j][i]..
+In a complicated loop nest making hundreds of data accesses, all using different orderings of the iterators, one forgotten (or extra) swap quickly creates crashes.
+And of course, once the transformation has been applied and the new bugs squashed, it may turn out that a layout change had no effect, or even a negative one.
+
+The multi-dimensional abstractions in P3 libraries bring the cost of such a transformation back to the scale of the programmer's thought-loop by introducing layout polymorphism.
+In Kokkos and YAKL, this polymorphism is restricted to compile-time.
+In RAJA, this polymorphism is restricted to runtime at the point of initialization.
+Regardless of where and how the programmer selects the layout specifically, the key idea here is that changing one thing about a data structure only requires changing one thing in the code.
+Listing~\ref{stencilData} shows the process of initializing two Views and highlights the minimal code changes required to switch between different layouts.
+
+\subsubsection{Operation/Execution Abstractions}
+\begin{figure}
+\begin{lstlisting}[caption={Specification of a 5-point stencil kernel using RAJA.}, label=stencilKernel]
+//Declare a lambda that executes one iteration of the computation...
 auto stencilLambda = [=](int i, int j) {
   B(i,j) = 0.2 * (A(i,j) + A(i-1,j) + A(i+1, j) + A(i,j-1) + A(i,j+1));
 };
 
+//Create the iteration space...
 auto iDimension = RangeSegment(1,N-1);
 auto jDimension = RangeSegment(1,M-1);
 auto iterationSpace = make_tuple(iDimension,jDimension);
 
+//Define the kernel execution policy...
 using SequentialPolicy = KernelPolicy<
-  statement::For<0,seq_exec,
-    statement::For<1,seq_exec,
-      statement::Lambda<0>
+  statement::For<0,seq_exec, //Sequential outer loop traverses iDimension
+    statement::For<1,seq_exec, //Sequential inner loop traverses jDimension
+      statement::Lambda<0> //Calls lambda
     >
   >
 >;
 
+//Launch!
 kernel<SequentialPolicy>(iterationSpace, stencilLambda);
-
-using OUTERPARALLEL = KernelPolicy<
-  statement::For<0,omp_parallel_for_exec,
-    statement::For<1,seq_exec,
-      statement::Lambda<0>
-    >
-  >
->;
-
-using INTERCHANGED = KernelPolicy<
-  statement::For<1,seq_exec,
-    statement::For<0,seq_exec,
-      statement::Lambda<0>
-    >
-  >
->;
-
 \end{lstlisting}
 \end{figure}
-\todo{example demonstrating the knobs and how RAJA enables P3.}
 
-\section{Cross-Loop Program Transformation}
+As with their data abstractions, P3 libraries share an approach to their abstractions for specifying and executing the operations of a computation.
+At a high level, the computation is decomposed into an operation describing what to do, an iteration space describing which values to do it for, and scheduling information describing how to order and distribute them among the different processing elements.
+This process is shown for a 5-point stencil computation in Listing~\ref{stencilKernel}.
 
-\todo{related work that does inter-loop scheduling, data transformations, and sparse format stuff}
+All three libraries share their use of functors to represent the operation of an individual iteration.
+Often represented using a lambda closure, these loop body statements form the basis for the description of a computation.
+Parameters to the lambdas represent the indices of an iteration space point. 
+An example of such a lambda is shown on lines 1-4 of Listing~\ref{stencilKernel}.
 
-\todo{Example of doing the three types of codes in RAJA or plain C++}
+The iteration space is specified as a tuple of containers.
+In Listing~\ref{stencilKernel}, lines 6-9 show this process for the 5-point stencil. 
+The \verb.RangeSegment. function creates a range from its first argument to its second.
+
+Last is the schedule for the computation.
+In RAJA, this comes in the form of the kernel policy.
+Lines 11-18 of Listing~\ref{stencilKernel} show the policy that describes the canonical sequential schedule.
+Changing parts of the kernel policy change the execution schedule. 
+Listing~\ref{stencilSchedule} shows some of these changes: one for loop interchange, one for OpenMP parallelization and vectorization, and one for loop tiling.
+
+Once these components are specified, they are combined and executed using the \verb.kernel. method, shown on the final line of Listing~\ref{stencilKernel}.
+Changing the loop schedule of the computation is as simple as changing the template argument to the call to a different policy.
+
+
+\begin{figure}
+\begin{lstlisting}[caption={Kernel policies for different loop schedules.}, label={stencilSchedule}]
+using OpenMPwithVectorization = KernelPolicy<
+  statement::For<0,omp_parallel_for_exec, //Parallel outer loop traverses iDimension
+    statement::For<1,simd_exec, //Vectorized inner loop traverses jDimension
+      statement::Lambda<0>
+    >
+  >
+>;
+
+using Interchanged = KernelPolicy<
+  statement::For<1,seq_exec, //Sequential outer loop traverses jDimension
+    statement::For<0,seq_exec, //Sequential inner loop traverses iDimension
+      statement::Lambda<0>
+    >
+  >
+>;
+
+using ParallelTiled = KernelPolicy<
+  statement::Tile<0, tile_fixed<64>, omp_parallel_for_exec, //Parallel tiling loop
+    statement::Tile<1, tile_fixed<64>, seq_exec, //Sequential tiling loop
+      statement::For<0,seq_exec, //Within tile, iDimension
+        statement::For<1,simd_exec, //Within tile, jDimension
+          statement::Lambda<0>
+        >
+      >
+    >
+  >
+>;
+\end{lstlisting}
+\end{figure}
+
+\section{Optimization Scope}
+
+The transformations that these libraries surface to the programmer support a common paradigm for program optimization: profile, identify an expensive loop or kernel, try a transformation, and repeat.
+Using this paradigm, each kernel is optimized as a standalone piece of code.
+While useful for leveraging the maximum possible parallelism from an application, it draws attention away from the interrelation of the kernels.
+This means that important opportunities for performance optimization can go overlooked.
+
+\subsection{Inter-Loop Transformations}
+Transformations at the inter-loop scope often target the reuse of data between loops.
+In computations bottlenecked by data transfer speeds, like sparse computations and the stencil computation above, these optimizations are especially beneficial. 
+Two examples are overlapped tiling and inter-kernel layout transformations.
+
+\subsubsection{Loop Fusion}
+\begin{figure}
+\begin{lstlisting}[caption={Three loops, with and without loop fusion.},label=fusionExample]
+//without fusion
+for(int i = 0; i < N; i++) {
+  A1(i) = A0(i) * 2;
+}
+for(int i = 0; i < N; i++) {
+  A2(i) = A1(i) - 1;
+}
+for(int i = 1; i < N-1; i++) {
+  A3(i) = A2(i-1) / 2;
+}
+
+//with fusion
+//iterations outside of the shared iteration space
+A1(0) = A0(0) * 2;
+A1(N-1) = A0(N-1) * 2;
+A2(0) = A1(0) - 1;
+A2(N-1) = A1(N-1) - 1;
+
+//fused component
+for(int i = 1; i < N-1; i++) {
+  A1(i) = A0(i) * 2;
+  A2(i) = A1(i) - 1;
+  A3(i) = A2(i-1) / 2;
+}
+\end{lstlisting}
+\end{figure}
+
+Loop fusion is a well-known optimization for improving data locality, appearing as an automated transformation in source to source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use decades before~\cite{warren1984hierarchical,thomas1971catalogue}.
+A simple example of this transformation is shown in Listing~\ref{fusionExample}.
+Rather than computing and storing the entirity of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the CPU's registers.
+However, loop fusion can interfere with the parallelization of the loops being fused.
+Newer transformations, like overlapped tiling, have been developed to achieve the locality improvements of loop fusion while maintaining sufficient parallelism.
+
+Overlapped tiling~\cite{holewinski2012high,krishnamoorthy2007effective} maintains parallelism by introduces small amounts of recomputation.
+In this transformation, each tile overlaps with those next to it, sharing some points of the iteration space.
+By choosing tile sizes that keep the fraction of recomputation low, parallel execution of the tiles still benefits from improved locality.
+This transformation has been ncorporated into an OpenCL compiler by Zhou et al~\cite{zhou2012hierarchical} and Polymage~\cite{mullapudi2015polymage}, a DSL for image processing pipelines, incorporates overlapped tiling into its automatic optimization passes.
+These approaches do not allow for programmer control over the tiling process.
+Halide~\cite{ragan-kelley2013halide}, another DSL for image processing pipelines, surfaces control over tiling to the programmer.
+For the optimization of existing codes, Bertolacci et al~\cite{bertolacci2019using} develop an approach based on pragma directives.
+
+\subsubsection{Layout Changes}
+
+If two computations access the same data in different orders, it can be worthwhile to change how that data is organized in memory so that both computations access the data in the most efficient way possible.
+As a simple example, consider the matrix multiplication $C = A * B$ followed by the matrix multiplication $E = A^{\top} * D$. 
+The way these computations will traverse the matrix $A$ is different. 
+In the computation of $C$, the data of $A$ is traversed across the rows, while in the computation of $E$, it is traversed across the columns.
+Assume for a moment that $A$ is stored in row-major order.
+Because the $C$ computation traverses the data of $A$ by rows, adjacent iterations will access elements of $A$ that are adjacent in memory.
+This has much more favorable cache behavior than the computation of $E$, where adjacent iterations access elements of $A$ that are more distant in memory.
+Performance can be improved by changing the layout of $A$ between the two computations, ensuring that both kernels have favorable access patterns.
+However, applying such a transformation by hand is, as discussed above, time consuming and error prone. 
+
+\todo{code example}
+
+\todo{related work}
+\subsubsection{Sparse Computations}
+
+\todo{what a sparse computation, why its relevant here (data movement}
+
+\todo{related work}
+
+\todo{RAJA can't represent these at all}
+
 
 \section{Summary of Contributions}
 
@@ -114,58 +294,6 @@ TBB & Library \\
 \end{figure}
 
 \end{comment}
-Performance portabile libraries are driven by the need to create modularized and easily-tuned code.
-This is achieved through a process of decomposing the computation into seperable parts.
-While the specifics of this decomposition differ across libraries, they share key components.
-Broadly, these components appear as data abstractions and operation/execution abstractions.
-
-\subsubsection{Data Abstractions}
-Multi-dimensional data is exceedingly common in simulation codes.
-However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
-Thus, any multi-dimensional representation must be mapped to the 1-dimesional nature of the hardware.
-Usually, this is achieved by breaking the data into one-dimensional strips and storing each strip in sequence.
-Different ways to break the data into strips produce different orders of elements within memory.
-Two of these layouts that are well-known are the two dimensional column-major and row-major storage formats.
-Here, the strips of two-dimensional data are either the columns or the rows.
-
-Called a View in RAJA and Kokkos and an Array in YAKL, multidimensional data structures are a key abstraction through which these embedded libraries surface portability controls to the programmer.
-When tuning an application for a new system, changing the layout of data in memory can have large performance implications.
-These differences are especially relevant between different processor types, where a data layout that performs well on a CPU is not best for a GPU.
-It can also impact performance between two CPUs because of threading and cache behaviors~\cite{trott2021kokkos}.
-
-Traditional approaches to representing multi-dimensional data, such as the array of pointers or vector of vectors, do not admit an easy data layout change.
-This is due to the high degree of coupling between the layout and the method of data access. 
-For example, using these approaches, an access to the $(i,j)$th entry of a two dimensional structure will look like this: \verb.A[i][j]..
-Should the programmer want to try a column-major ordering instead of the default row-major, their only option is to completely transpose the data structure.
-This process starts with the cumbersome but managable task of redeclaring the sizes of each dimension in the structure's initializiation, switching the dimensions' extents.
-Then, every single access to the structure needs to be changed. 
-All instances \verb.A[i][j]. must become \verb.A[j][i]..
-This is a enormous task, and one where well-camouflaged bugs are born. 
-In a paragraph of prose, \verb.[i][j]. is easily distinguished from \verb.[j][i]..
-In a complicated loop nest making hundreds of data accesses, all using different orderings of the iterators, one forgotten (or extra) swap quickly creates crashes.
-And of course, once the transformation has been applied and the new bugs squashed, it may turn out that a layout change had no effect, or even a negative one.
-
-The multi-dimensional abstractions in P3 libraries bring the cost of such a transformation back to the scale of the programmer's thought-loop by introducing layout polymorphism.
-In Kokkos and YAKL, this polymorphism is restricted to compile-time.
-In RAJA, this polymorphism is restricted to runtime at the point of initialization.
-Regardless of where and how the programmer selects the layout specifically, the key idea here is that changing one thing about a data structure only requires changing one thing in the code.
-Changing layouts in these libraries does not require the data accesses to be changed too.
-This makes it signficantly easier to experiment with different layouts, thus reducing the cost of tuning for a new system.
-
-\subsubsection{Operation/Execution Abstractions}
-
-Like with their data abstractions, P3 libraries share an approach to their abstractions for specifying and executing the operations of a computation.
-At a high level, the computation is decomposed into an operation describing what to do, an iteration space describing which values to do it for, and scheduling information describing how to order and distribute them among the different processing elements.
-
-All three libraries share their use of functors to represent the operation of an individual iteration.
-Often represented using a lambda closure, these loop body statements form the basis for the description of a computation.
-Parameters to the lambdas represent the indices of an iteration space point. For example, the lambda for a matrix-vector multiplication would have two parameters, one for the outer loop value and one for the inner loop value.
-
-Isolating the schedule information allows the programmer to try out different loop schedules as part of tuning an application.
-For example, the programmer can easily change how a loop's iterations are distributed across threads.
-Another example of a scheduling optimization supported by all three libraries is loop tiling or blocking.
-
-\todo{One of my points: Manipulation requires data. Manipulating computations means computations must be viewed as data.}
 
 
 \section{Optimization Scopes}
@@ -175,19 +303,7 @@ Using this paradigm, each kernel is optimized as a standalone piece of code.
 While useful for leveraging the maximum possible parallelism from an application, it draws attention away from the interrelation of the kernels.
 This means that important opportunities for performance optimization can go overlooked.
 
-\begin{figure}
-\begin{lstlisting}[caption={Example of a producer-consumer relationship between kernels. This relationship can be pointwise, like the first and second loops, or based on a stencil, like the third},label=producerConsumer]
-for(int i = 0; i < N; i++) {
-  A1(i) = A0(i) * 2;
-}
-for(int i = 0; i < N; i++) {
-  A2(i) = A1(i) - 1;
-}
-for(int i = 1; i < N-1; i++) {
-  A3(i) = (A2(i-1) + A(i+1)) / 2;
-}
-\end{lstlisting}
-\end{figure}
+
 One example of this phenomenon is producer-consumer kernel sequences.
 In this pattern, kernels produce values that are used in the kernels after them in the sequence.
 A simple example of this pattern is shown in Listing~\ref{producerConsumer}.
