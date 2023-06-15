@@ -1,7 +1,7 @@
 \chapter{Introduction}
 
 High performance computer simulation plays a foundational role in modern science and engineering.
-For example, considering the ten-figure cost of a utility-scale wind farm~\cite{farmCost}, there is significant interest in ensuring the farm will behave as expected. 
+For example, considering the nine-figure cost of a utility-scale wind farm~\cite{wiser2022land}, there is significant interest in ensuring the farm will behave as expected. 
 Computer simulation can help provide this confidence.
 
 When developing these types of applications, three competing concerns need balanced. 
@@ -25,11 +25,11 @@ In developing HPC applications, DoE places emphasis on creating codes that run p
 Performance portability libraries like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} address this problem by surfacing the performance ``knobs'' that an engineer can use to tune an application for a particular system. 
 These include loop schedule transformations --- like loop interchange, tiling, vectorization, OpenMP threading, offloading to accelerators --- and global data format transformations.
 While powerful, this approach focuses on tuning each loop independently, leaving out opportunities for optimizations that are applied across loops.
-A programmer who wishes to apply valuable cross-loop optimizations like loop fusion~\cite{todo}, overlapped tiling~\cite{bertolacci2019using,todoCathySCPaper, todoOVerlappedTilingIntroPaper}, or inter-loop layout changes~\cite{kennedy1995automatic,kennedy1998automatic} cannot do so without breaking the abstractions of the performance portability library.
+A programmer who wishes to apply valuable cross-loop optimizations like loop fusion~\cite{mckinley1996improving}, overlapped tiling~\cite{bertolacci2019using,zhou2012hierarchical,CathieSC14}, or inter-loop layout changes~\cite{kennedy1995automatic,kennedy1998automatic} cannot do so without breaking the abstractions of the performance portability library.
 This sacrifice of portability for performance is also present for a programmer who wishes to express parts of a computation that work with sparse data.
 This dissertation seeks to remedy this problem, introducing abstractions to support cross-loop schedule and data transformations and laying the foundation for native support for sparse computations within the RAJA library.
 
-\section{Programming with a Performance Portability Libraries}
+\section{Programming with Performance Portability Libraries}
 Performance portabile libraries are driven by the need to create modularized and easily-tuned code.
 This is achieved through a process of decomposing the computation into seperable parts.
 While the specifics of this decomposition differ across libraries, they share key components.
@@ -220,7 +220,7 @@ for(int i = 1; i < N-1; i++) {
 \end{lstlisting}
 \end{figure}
 
-Loop fusion is a well-known optimization for improving data locality, appearing as an automated transformation in source to source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use decades before~\cite{warren1984hierarchical,thomas1971catalogue}.
+Loop fusion is a well-known optimization for improving data locality, appearing as an automated transformation in source to source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use decades before~\cite{warren1984hierarchical,cocke1971catalogue}.
 A simple example of this transformation is shown in Listing~\ref{fusionExample}.
 Rather than computing and storing the entirity of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the CPU's registers.
 However, loop fusion can interfere with the parallelization of the loops being fused.
