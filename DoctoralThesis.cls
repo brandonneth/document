@@ -266,6 +266,8 @@
 \RequirePackage{geometry}
 \geometry{
 	headheight=4ex,
+	%headheight=24pt,
+	%head=24pt,
 	includehead,
 	includefoot
 }

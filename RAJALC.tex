@@ -7,7 +7,7 @@ In this work, we incorporate the loop chain abstraction into RAJA, a performance
 Using the loop-chain-extended RAJA, or RAJALC, developers can have the RAJA library apply loop transformations like loop fusion and overlapped tiling while maintaining the original structure of their programs. 
 By introducing targeted symbolic evaluation capabilities, we can collect and cache data access information required to verify loop transformations.
 We evaluate the performance improvement and refactoring costs of our extension.
-Overall, our results demonstrate 85-98\% of the performance improvements of hand-optimized kernels with dramatically fewer code changes.
+Overall, our results demonstrate 85--98\% of the performance improvements of hand-optimized kernels with dramatically fewer code changes.
 
 \section{Introduction}
 Scientific inquiry leverages high-performance computing (HPC) for a variety of
@@ -28,10 +28,10 @@ Because the labor costs of developing a new version of an application are so hig
 there is a need for tools that allow developers to design a single application
 that performs well across systems with minimal modifications.
 
-One such tool is the RAJA performance portability layer~\cite{RAJA}, a C++ library.
+One such tool is the RAJA performance portability layer~\cite{hornung2014RAJA}, a C++ library.
 RAJA enables programmers to specify loops with templated functions,
 where one template parameter is an execution policy such as 
-\ttt{simd\_exec}, \ttt{omp\_parallel\_for\_exec}, or \ttt{cuda\_exec}.
+\verb.simd_exec. (vectorized), \verb.omp_parallel_for_exec. (OpenMP threading), or \verb.cuda_exec. (GPU).
 Thus the heavy lifting of porting a parallel implementation to different 
 architectures is abstracted into standardized execution policies.
 
@@ -45,7 +45,7 @@ While RAJA supports porting per-loop parallelism between systems, it lacks the a
 The key capability RAJA needs to enable porting these transformations is an inter-loop scope.
 The loop chain abstraction provides exactly this.
 
-The loop chain abstraction~\cite{krieger2013} captures sequences of loops that share 
+The loop chain abstraction~\cite{krieger2013loop} captures sequences of loops that share 
 data and enough information about how such loops access 
 data to enable inter-loop optimization.
 Considering loops as a chain uncovers optimizations, like fusion
@@ -63,12 +63,12 @@ This chapter presents the following contributions:
 \item the design of a compact RAJA extension to enable inter-loop
 			optimizations;
 \item a methodology to perform symbolic evaluation in C++ code;
-\item an implementation of these techniques in RAJA; and
+\item an implementation of these techniques in RAJA\@; and
 \item evaluation of their porting costs and performance benefits.
 \end{itemize}
 
 For the RAJAPerf case study, RAJALC requires 8.5 source lines of code changed or added on average, compared to 23.625 when implementing by hand.
-Furthermore, in 21 of 24 benchmark-system combinations, RAJALC sees performance changes in the same direction as hand-implemented variants, and 85-98\% of the performance improvement, depending on the system.
+Furthermore, in 21 of 24 benchmark-system combinations, RAJALC sees performance changes in the same direction as hand-implemented variants, and 85--98\% of the performance improvement, depending on the system.
 
 \section{RAJA's Approach to Portability}
 
@@ -85,13 +85,13 @@ In this paper, I use these features to build the loop chain abstraction.
 %First person plural bc its me and the reader walking through stuff
 To illustrate the loop and data access abstraction and to provide context
 for the required coding effort, I port a loop in the HYDRO\_2D benchmark
-from its reference C/C++ implementation to use RAJA.
+from its reference C/C++ implementation to use RAJA\@.
 Listing~\ref{hydroPort} shows the before and after for the port.
 
-RAJA has two built-in execution primitives: \ttt{forall} and \ttt{kernel}.
-\ttt{forall} is used for unnested loops, so for this example we use
-\ttt{kernel}.
-We must provide three pieces of information to \ttt{kernel}. 
+RAJA has two built-in execution primitives: \verb.forall. and \verb.kernel..
+\verb.forall. is used for unnested loops, so for this example we use
+\verb.kernel..
+We must provide three pieces of information to \verb.kernel.. 
 First, we provide the execution policy, which describes the structure of
 the loop and what parts to run in parallel.
 Second, we provide a container of iterator tuples, which describe the
@@ -105,7 +105,7 @@ Their use is generally optional with RAJA, but is required to use the loop
 chain abstraction.
 The abstraction requires data access information, which we collect by
 overloading View operators.
-Lines 10-11 of Listing~\ref{hydroPort} show how to initialize \ttt{zrout}
+Lines 10--11 of Listing~\ref{hydroPort} show how to initialize \verb.zrout.
 as a View object.
 
 \begin{figure}
@@ -142,9 +142,8 @@ kernel<KPol>(make_tuple(<@\textcolor{blue}{RangeSegment(kbeg, kend)}@>,
 \end{figure}
 
 \subsection{Impact of RAJA}
-\todo{Is this subsection necessary?}
 
-RAJA~\cite{RAJA} provides a methodology to improve application portability.
+RAJA provides a methodology to improve application portability.
 As the high end of high performance computing transitions from traditional
 homogeneous core designs into heterogeneous systems, applications 
 require a common abstraction to keep up with the variety of platforms
@@ -167,8 +166,7 @@ Ardra achieved $12\times$ speedups on nodes of the LLNL Sierra system for
 meaningful inputs.
 
 
-\section{Loop Chain Abstraction}
-\label{sec:loopchain}
+\section{Loop Chain Abstraction}\label{sec:loopchain}
 RAJA loop execution policies apply to individual loops.
 Often two or more loops exhibit producer/consumer data sharing.
 The loop chain abstraction~\cite{krieger2013loop} enables scheduling
@@ -216,7 +214,7 @@ into \ttt{c}.
 
 The set $I_{0}=\{[0,i,0,j,0] \; | \; 0 \leq i < N, 0 \leq j < M\}$ describes
 the iterations of the first loop while the set of vectors
-$I_{1} = \{[1,i,0,j,0] \; | \; 1 \leq i < N-1, 1 \leq j < M-1\}$. describes
+$I_{1} = \{[1,i,0,j,0] \; | \; 1 \leq i < N-1, 1 \leq j < M-1\}$ describes
 those of the second.
 Within each tuple, the first element is the loop index, the second and fourth are the iteration of the loop dimensions, and the third and fifth are the statement index within the loop. 
 We can describe the sequential loop schedules as the lexicographical ordering over
@@ -239,7 +237,7 @@ is due to the data element written in iteration (i,j) of the
 first loop being read by iteration $(i-1,j)$ of the second loop. %, not $(i-1,j)$.
 %Write-after-write and write-after-read dependences are formulated similarly.
 
-A legal loop transformation maintains the dependence relations. 
+A legal loop transformation maintains dependence relations. 
 That is, a transformation is legal if its application to the dependence
 relations remains a subset of the schedule relation.
 Consider the fusion transformation on the example loops, which maps the
@@ -276,13 +274,12 @@ that extracts them.
 
 First, I introduce an interface in RAJA for users to specify loop chains and transformations
 so as to enable inter-loop optimizations without additional tooling or compilation steps.
-We
 Second, I design a symbolic evaluation mechanism that gathers data access patterns of
 kernels.
 Third, I use this mechanism to analyze kernels at runtime and use the results to automate the generation of a safe execution schedule for the kernels.
 
 
-Traditional polyhedral optimization techniques are normally broken up into identifying code regions to optimize, converting to a polyhedral representation, analysis/transformation, and code generation. 
+Traditional polyhedral optimization techniques are normally broken up into identifying code regions to optimize, converting to a polyhedral representation, analyzing the structure, applying transformations, and generating code.
 Because RAJALC operates at the language level rather than the compiler level, my approach is slightly different. While identifying code regions, converting to a polyhedral representation, and analysis are roughly equivalent to compiler-level approaches, transformation and code generation are formulated differently. 
 The fundamental difference is that transformation and code generation happen \textit{before} any analysis.
 
@@ -314,11 +311,11 @@ The fundamental difference is that transformation and code generation happen \te
 	\end{figure}
 Delayed execution is a key design pattern in %optimizing languages like
 embedded domain-specific languages such as
-Halide~\cite{Ragan-Kelley2013} and Tensorflow~\cite{tensorflow}.
+Halide~\cite{ragan-kelley2013halide} and Tensorflow~\cite{tensorflow}.
 These languages separate the statements that specify a computation from
 those that execute it.
 In between, the programmer can specify how to schedule and optimize the computation.
-However, in standard RAJA, computational \ttt{kernel} statements immediately execute the specified computation.
+However, in standard RAJA, computational \verb.kernel. statements immediately execute the specified computation.
 So, I introduce a wrapper class (\verb.KernelWrapper.) that enables execution
 to be delayed until after analysis and transformation.
 I introduce two functions based on existing kernel execution functions to
@@ -328,8 +325,7 @@ return a \verb.KernelWrapper. object that can be executed or optimized.
 Listing~\ref{transformExample} shows these wrapping functions in use. 
 
 
-\subsection{Gathering Access Information}
-\label{subsec:accesses}
+\subsection{Gathering Access Information}\label{subsec:accesses}
 \begin{figure}[t]
 \begin{lstlisting}[label={symExecChanges}, caption={Kernel Lambda Conversion}]
 auto original_lambda = [=](idx_t i, idx_t j) {
@@ -347,8 +343,7 @@ auto converted_lambda = [=](auto i, auto j) { //idx_t -> auto
 \caption{Symbolic evaluation of a kernel lambda. 
 Indexing expressions are evaluated first, then accesses, then statements in terms of accesses.
 As assignments are evaluated, the accesses are marked as reads or writes.
-Accesses are tracked using the access collector.}
-\label{symExec}
+Accesses are tracked using the access collector.}\label{symExec}
 \end{figure}
 Specifying parallelism within RAJA and other programming models can
 build on commonly used abstractions such as \verb.forall..
@@ -417,8 +412,7 @@ IndexOperand : Int | Double | Iterator
 \end{lstlisting}
 \end{figure}
 	
-\subsection{Loop Chain Transformation Specifications}
-\label{sec:transspec}
+\subsection{Loop Chain Transformation Specifications}\label{sec:transspec}
 
 With computation objects and their access patterns in hand, transformations can finally be applied.
 RAJALC supports two transformations, loop fusion and overlapped tiling, each with two variants.
@@ -439,7 +433,7 @@ it allows them to fuse kernels that do not use Views.
 On the other hand, \verb.fuse. requires the user to use Views instead
 of arrays to limit the fusion transformation to when it is safe.
 
-Overlapped tiling transformations provide improved data locality
+Overlapped tiling transformations improve data locality
 and enables parallelism by performing some redundant computation 
 on the surface of the tiles.
 They work best for loops with stencil-like access patterns,
@@ -469,68 +463,61 @@ Then, the access information is used by the transformation functions to select w
 \begin{figure*}
 	\centering
 
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=0.5in]{TilingProcess/TilingProcess1.png}
-		\caption{Original kernel iteration spaces and (abbreviated) dependences.}
-		\label{tiling1}
+		\includegraphics[height=0.45in]{TilingProcess/TilingProcess1.png}
+		\caption{Original kernel iteration spaces and abbreviated dependences between iterations.}\label{tiling1}
 	\end{subfigure}
 	~
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=.5in]{TilingProcess/TilingProcess2.png}
-		\caption{After shifting kernels to remove negative dependences.}
-		\label{tiling2}
+		\includegraphics[height=.45in]{TilingProcess/TilingProcess2.png}
+		\caption{After shifting kernels to remove negative dependences.}\label{tiling2}
 	\end{subfigure}
 	\par\bigskip
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=0.5in]{TilingProcess/TilingProcess3.png}
-		\caption{Shared iteration space. Chain could be fused sequentially.}
-		\label{tiling3}
+\includegraphics[height=0.45in]{TilingProcess/TilingProcess3.png}
+		\caption{Shared iteration space. Chain could be fused sequentially.}\label{tiling3}
 	\end{subfigure}
 	~
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=.5in]{TilingProcess/TilingProcess4.png}
-		\caption{Underlying tiles for TileSize=6 shaded in purple.}
-		\label{tiling4}
+		\includegraphics[height=.45in]{TilingProcess/TilingProcess4.png}
+		\caption{Underlying tiles for TileSize=6 shaded in purple.}\label{tiling4}
 	\end{subfigure}
 	\par\bigskip
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=0.5in]{TilingProcess/TilingProcess5.png}
+		\includegraphics[height=0.45in]{TilingProcess/TilingProcess5.png}
 		\caption{Overlap for each tile shaded in orange. Tiles against low edge have no overlap.}
 	\end{subfigure}
 	~
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=.5in]{TilingProcess/TilingProcess6.png}
+		\includegraphics[height=.45in]{TilingProcess/TilingProcess6.png}
 		\caption{An individual overlapped tile.}
 	\end{subfigure}
 	\par\bigskip
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=0.5in]{TilingProcess/TilingProcess7.pdf}
-		\caption{Execution order for an individual tile without fusion.}
-		\label{tileNofuse}
+		\includegraphics[height=0.45in]{TilingProcess/TilingProcess7.pdf}
+		\caption{Execution order for an individual tile without fusion.}\label{tileNofuse}
 	\end{subfigure}
 	~
-	\begin{subfigure}[t]{0.5\textwidth}
+	\begin{subfigure}[t]{0.45\textwidth}
 		\centering
-		\includegraphics[height=0.5in]{TilingProcess/TilingProcess8.pdf}
-		\caption{Execution order for an individual tile with fusion.}
-		\label{tileFuse}
+		\includegraphics[height=0.45in]{TilingProcess/TilingProcess8.pdf}
+		\caption{Execution order for an individual tile with fusion.}\label{tileFuse}
 	\end{subfigure}
 	\par\bigskip
 	\begin{subfigure}[t]{\textwidth}
 		\centering
-		\includegraphics[height=0.5in]{TilingProcess/TilingProcess9.pdf}
-		\caption{Global execution order for entire computation.}
-		\label{tiling9}
+		\includegraphics[height=0.45in]{TilingProcess/TilingProcess9.pdf}
+		\caption{Global execution order for entire computation.}\label{tiling9}
 	\end{subfigure}
-\label{tilingProcess}
-\caption{Overlapped tiling of 3 one-dimensional loops.}
+
+\caption{Overlapped tiling of 3 one-dimensional loops.}\label{tilingProcess}
 \end{figure*}
 
 \section{Transformations Safety in RAJALC}
@@ -548,13 +535,13 @@ For a fusion to be legal, the inter-loop dependences cannot have a
 negative direction.
 However, loops can often be shifted to make such
 dependences non-negative.
-Figures~\ref{tiling1} and \ref{tiling2} show an example of shifting the
+Figures~\ref{tiling1} and~\ref{tiling2} show an example of shifting the
 loops to adjust negative dependences.
 Prior work showed how to convert the dependence relations into constraints
-of an ILP optimization problem~\cite{Bertolacci2019}.
+of an ILP optimization problem~\cite{bertolacci2019using}.
 RAJALC minimizes the sum of the non-negative shift amounts
-$S_{1,1},S_{1,2}...,S_{2,1},...,S_{l,n}$ with the constraints $S_{b,i} + d_i \geq S_{a,i}$ for each dependence
-$[d_1,d_2,...,d_n]$ from kernel $a$ to $b$.
+$S_{1,1},S_{1,2},\ldots,S_{2,1},\ldots,S_{l,n}$ with the constraints $S_{b,i} + d_i \geq S_{a,i}$ for each dependence
+$[d_1,d_2,\ldots,d_n]$ from kernel $a$ to $b$.
 Solutions to this problem correspond to shift amounts that enable loop fusion.
 RAJALC also use this shifting mechanism to simplify the dependences for overlapped
 tiling.
@@ -613,33 +600,28 @@ With overlapped tiling, the new lambda executes each original lambda across its 
 	%		\caption{Original iteration space of one loop in chain.}
 	%	\end{subfigure}
 		
-		\begin{subfigure}[t]{0.33\textwidth}
+		\begin{subfigure}[t]{0.45\textwidth}
 			\centering
 			\includegraphics[height=1.5in, clip=true, trim=200 20 200 200]{FusionPartition/FusionPartition2.pdf}
-			\caption{Original iteration space of one \\ loop in chain and shared iteration \\ space executed by fused kernel.}
-			\label{sharedSpace}
+			\caption{Original iteration space of one \\ loop in chain and shared iteration \\ space executed by fused kernel.}\label{sharedSpace}
 		\end{subfigure}
-	
-		\begin{subfigure}[t]{0.33\textwidth}
+		\begin{subfigure}[t]{0.45\textwidth}
 			\centering
 			\includegraphics[height=1.5in, clip=true, trim=200 20 200 200]{FusionPartition/FusionPartition5.pdf}
-			\caption{Lower boundary iteration spaces.}
-			\label{preshare}
+			\caption{Lower boundary iteration spaces.}\label{preshare}
 		\end{subfigure}
 	
-		\begin{subfigure}[t]{0.33\textwidth}
+		\begin{subfigure}[t]{0.5\textwidth}
 			\centering
 			\includegraphics[height=1.5in, clip=true, trim=200 20 200 200]{FusionPartition/FusionPartition8.pdf}
-			\caption{Higher boundary iteration spaces.}
-			\label{postshare}
+			\caption{Higher boundary iteration spaces.}\label{postshare}
 		\end{subfigure}
-	\caption{Partitioning the iteration space of a single 3d loop. The original iteration space is (0,10)x(0,10)x(0,10) and the fused iteration space is (1,9)x(2,8)x(1,8). This partitioning process occurs for each kernel in the chain.}
-	\label{fusionPartition}
+	\caption{Partitioning the iteration space of a single 3d loop. The original iteration space is $(0,10)\times(0,10)\times(0,10)$ and the fused iteration space is $(1,9)\times(2,8)\times(1,8)$. This partitioning process occurs for each kernel in the chain.}\label{fusionPartition}
 	\end{figure}
 	
 
 
-	\subsection{Overlapped Tiling}
+\subsection{Overlapped Tiling}
 
 Overlapped tiling proceeds similarly to the \verb.fuse. transformation. 
 First, RAJALC calculates and applies shifts to remove negative dependences as
@@ -653,12 +635,12 @@ calculate the overlap amounts.
 This is set up as an ILP optimization problem similarly to the calculation of the
 shift amounts.
 For $n$ kernels of dimension $m$, the optimization problem is over the $nm$
-overlap amounts $O_{1,1},O_{1,2},...,O_{2,1},...,O_{n,m}$.
+overlap amounts $O_{1,1},O_{1,2},\ldots,O_{2,1},\ldots,O_{n,m}$.
 I introduce a non-negativity constraint to ensure that all overlap amounts
 are greater than zero. 
 I then add the constraints
-$O_{a,1} >= O_{b,1} + d_{1}, O_{a,2} >= O_{b,2} + d_{2},...,O_{a,m} >= O_{b,m} + d_{m}$
-for each dependence $D=[d_{1},d_{2},...,d_{m}]$ from kernel $a$ to kernel $b$,
+$O_{a,1} >= O_{b,1} + d_{1}, O_{a,2} >= O_{b,2} + d_{2},\ldots,O_{a,m} >= O_{b,m} + d_{m}$
+for each dependence $D=[d_{1},d_{2},\ldots,d_{m}]$ from kernel $a$ to kernel $b$,
 which ensures that if a tile includes an iteration of kernel $b$, it also
 includes all necessary iterations of kernel $a$.
 Finally, it minimizes the sum of the overlap amounts
@@ -686,8 +668,8 @@ need for parallelism, enabling larger tiles than otherwise possible.
 \section{Case Study: RAJA Performance Suite}
 
 I evaluate the advances through two case studies, porting the RAJA
-Performance Suite (RAJAPerf) ~\cite{hornung2017raja} and  LULESH from
-standard RAJA to RAJALC.
+Performance Suite (RAJAPerf)~\cite{hornung2017raja} and  LULESH from
+standard RAJA to RAJALC\@
 In both case studies, I evaluate the performance and porting process
 of the RAJALC implementations and I detail benefits and limitations
 of the approach.
@@ -705,15 +687,15 @@ Thus, I evaluate RAJALC on 8 benchmark kernels.
 For each of the 8 kernels, I identify a locality-improving transformation
 and implement new variants.
 The first variant, \verb.Hand_Opt., applies the transformations directly.
-The second variant, \verb.LoopChain., applies the transformation using RAJALC.
+The second variant, \verb.LoopChain., applies the transformation using RAJALC\@.
 I record the number of modified or added source lines of code for each
 variant and evaluate their performance on three systems.
 %Rose
-System Intel1 has an 8-core Intel Core i7-6900K CPU at 3.2 GHz and 32G of memory.
+System Intel1 has an 8-core Intel Core i7--6900K CPU at 3.2 GHz and 32G of memory.
 % 512K L1 cache, 2M L2 cache, and 20M L3 cache.
 It runs Ubuntu 16.04.7 and GCC11.0.
 %Quartz
-System Intel2 has a 36-core Intel Xeon E5-2695 CPU at 2.1 GHz and 128 GB of memory.
+System Intel2 has a 36-core Intel Xeon E5--2695 CPU at 2.1 GHz and 128 GB of memory.
 %Lassen
 System Power9 has an 44-core IBM Power9 at 3.5 GHz and 256 GB of memory.
 Systems Intel2 and Power9 run TOSS 3 and GCC8.3.1.
@@ -742,7 +724,7 @@ The other five benchmarks are stencil computations: \verb.JACOBI_1D.,
 \verb.JACOBI_2D., \verb.HEAT_3D., \verb.HYDRO_2D., and \verb.FDTD_2D..
 \verb.JACOBI_1D., \verb.JACOBI_2D., and \verb.HEAT_3D. compute solutions
 to discretized PDEs in their respective dimensions.
-\verb.HYDRO_2D. is part of an explicit hydrodynamics code.
+\verb.HYDRO_2D. is part of a hydrodynamics code.
 \verb.FDTD_2D. is a finite-difference time-domain kernel that is unique
 among the stencil computations because I can fuse two of its four loops 
 without inhibiting parallelism.
@@ -845,8 +827,7 @@ which significantly complicates code maintenance.
 \subsection{Performance}
 \begin{figure}
 \includegraphics[width=\linewidth]{results/RajaPerf/Rose/RAJAPerf.png}
-\caption{Performance changes of RAJAPerf benchmarks on System Intel1 (higher is better).}
-\label{RAJAPerfPerf}
+\caption{Performance changes of RAJAPerf benchmarks on System Intel1 (higher is better).}\label{RAJAPerfPerf}
 \end{figure}
 Figure~\ref{RAJAPerfPerf} shows the performance of the hand-implemented
 and RAJALC variants relative to the original implementations on System Intel1. 
@@ -861,7 +842,7 @@ to the larger number of fused kernels than the other benchmarks.
 For all four, the RAJALC variant's performance is comparable to the
 hand-implemented loop fusion. 
  
-For the overlapped tiled benchmarks, the hand-implemented variant improves
+For the overlapped tiled benchmarks, the \verb.Hand_Opt. variant improves
 performance up to 22\% for all benchmarks.
 The RAJALC variant, which achieves its best performance with different tile sizes, improves performance by 
 up to 20\%.
@@ -870,7 +851,7 @@ Overall, the RAJALC variant achieves 85\% of the geometric mean performance
 improvement of the hand-implemented variant. 
 
 
-Because of the large thread counts on Systems Intel2 and Power9, I evaluated the scaling performance of RAJAPerf when using RAJALC.
+Because of the large thread counts on Systems Intel2 and Power9, I evaluated the scaling performance of RAJAPerf when using RAJALC\@.
 Unlike on System Intel1, RAJAPerf often did not benefit from the inter-loop
 optimizations on Systems Intel2 and Power9, even when applied by hand. 
 However, the direction of RAJALC's performance impact was nearly identical to the hand-optimized code. 
@@ -898,7 +879,7 @@ I must first identify the part of the application to optimize,.
 I choose the function \verb.EvalEOSForElems., which has a long series
 of point-wise computations over the same iteration space.
 The \verb.ENERGY. and \verb.PRESSURE. benchmarks within RAJAPerf are
-from this part of LULESH.
+from this part of LULESH\@.
 
 \subsubsection{Code Change: Arrays to Views}
 
@@ -918,10 +899,9 @@ parentheses, a tedious but simple code change.
 
 The second required change uses RAJALC kernel objects instead of direct
 code execution.
-I move the series of point-wise computations over the same iteration space
-in \verb.EvalEOSForElems. into many individual functions.
+I move the series of point-wise computations in \verb.EvalEOSForElems. that operate over the same iteration space into many individual functions.
 I modify them to create and to return the kernel objects, which allows us
-to fuse them, both by hand and with RAJALC.
+to fuse them, both by hand and with RAJALC\@.
 
 
 \subsubsection{Challenge: Indirect Accesses}
@@ -956,24 +936,20 @@ directly applies loop fusion by hand.
 
 \begin{figure}[t]
 \includegraphics[width=\linewidth]{results/Lulesh/LuleshRoseGcc8All/LuleshRoseGcc8All.png}
-
-\caption{LULESH Speedup on System Intel1 (higher is better).}
-\label{LULESHRose}
+\caption{LULESH Speedup on System Intel1 (higher is better).}\label{LULESHRose}
 \end{figure}
 
 \begin{figure}[t]
 \includegraphics[width=\linewidth]{results/Lulesh/LuleshQuartzGcc8All/LuleshQuartzGcc8All.png}
-\caption{LULESH Speedup on System Intel2 (higher is better).}
-\label{LULESHQuartz}
+\caption{LULESH Speedup on System Intel2 (higher is better).}\label{LULESHQuartz}
 \end{figure}
 
 \begin{figure}[t]
 \includegraphics[width=\linewidth]{results/Lulesh/LuleshLassen/LuleshLassen.png}
-\caption{LULESH Speedup on System Power9 (higher is better).}
-\label{LULESHLassen}
+\caption{LULESH Speedup on System Power9 (higher is better).}\label{LULESHLassen}
 \end{figure}
 
-Figures ~\ref{LULESHRose}, ~\ref{LULESHQuartz}, and ~\ref{LULESHLassen} show
+Figures~\ref{LULESHRose},~\ref{LULESHQuartz}, and~\ref{LULESHLassen} show
 the average speedup over three runs relative to Original for several problem
 sizes. 
 For the recommended problem sizes on Systems Intel1 and Intel2, RAJALC does
@@ -987,7 +963,7 @@ within the fused kernel were not inlined.
 In the By Hand variant, the calls are always inlined by virtue of the code
 being combined into a single lambda. 
 Introducing multiple extra calls each iteration of the fused loop likely
-contributes to the performance degradation with RAJALC.
+contributes to the performance degradation with RAJALC\@
 Second, the code for the kernels that were successfully inlined is dispersed
 throughout the binary and contains more than twice as many basic blocks as
 the By Hand variant. 
@@ -1014,7 +990,7 @@ within the context of domain-specific languages (DSLs).
 This work aims to enable more general approaches within the performance portability library framework.
 
 \subsection{Portable Intra-Loop Optimization}
-RAJA~\cite{RAJA}, OpenMP~\cite{OpenMPver5}, Kokkos~\cite{CarterEdwards2014},
+RAJA~\cite{hornung2014RAJA}, OpenMP~\cite{OpenMPver5}, Kokkos~\cite{edwards2014kokkos},
 and SYCL~\cite{SYCL2019} provide ways to parallelize and provide data locality
 within individual loops.
 For performance portability, Pennycook et al.~\cite{Pennycook2018} show an
@@ -1027,7 +1003,7 @@ in pragmas to target different architectures.
 Active libraries~\cite{VeldhuizenActive98} such as the 
 Matrix Template Library~\cite{Siek:1999:SPM},
 Blitz++~\cite{Veldhuizen2000},
-and the Bernoulli compiler~\cite{Stodghill97,Ahmed2000} fuse some
+and the Bernoulli compiler~\cite{ahmed2000framework,kotlyar1997relational} fuse some
 computations using expression templates, but cannot fuse across statements.
 
 \subsection{By Hand Inter-Loop Optimization}
@@ -1039,30 +1015,13 @@ significantly better performance in a CFD application.
 Wahib and Maruyama~\cite{Wahib14} showed the importance of fusing kernel
 computations for GPU execution.
 
-Numerous approaches to scheduling across an outer ``time loop" in a stencil
+Numerous approaches to scheduling across an outer ``time loop'' in a stencil
 code have been investigated as early as 1998~\cite{Bassetti98,Wonnacott00}.  
 The Cactus project~\cite{Ripeanu2001,Allen00cactus-gtoolkit} and 
 Ding and He~\cite{Ding2001} demonstrated  overlapped tiling by expanding
 ghost cells in stencil computations. 
 Wonnacott and Strout~\cite{Wonnacott13} review many other approaches to
 time tiling for PDE codes that do explicit stepping versus implicit stepping.
-%Bassetti et al.~\cite{Bassetti98} introduce an optimization they call sliding block temporal tiling.  
-%They indicate that in these relaxation algorithms such as Jacobi "[g]enerally several sweeps are 
-%made".  In their experiments they use up to 8 sweeps.
-%[Domain-specific library approaches to providing overlapped tiling for PDE applications.]
-%The Cactus toolkit is an application framework that supports distributed memory parallelization 
-%of PDE applications and includes some capability for doing overlapped tiles of computation 
-%to avoid communication~\cite{Allen00cactus-gtoolkit}.
-
-
-%Build to Order BLAS~\cite{belter09:_bto} provided a MATLAB-like DSL for
-%specifying dense linear algebra computations that include subcomputations
-%included in BLAS~\cite{Duff:1997:LTB}.
-%It included a performance model and an algorithm to optimize across those
-%computations.
-%% BRONIS: Not clear why this is remarkable
-%% and generating the resulting optimized code.
-%% BRANDON: Removed this paragraph bc we don't do linear algebra computations
 
 \subsection{DSLs Providing Inter-Loop Optimization}
 A number of DSLs have been developed for specifying and
@@ -1079,22 +1038,22 @@ Their work demonstrates some possible performance benefits of scheduling
 
 across stencil computations when targeting GPUs and CPUs. In contrast,
 I present ways to enable and to control these optimizations across loops
-in the context of a more general, parallel library, specifically RAJA.
+in the context of a more general, parallel library, specifically RAJA\@.
 
 LIFT~\cite{Hagedorn2018} is a data parallel, functional intermediate
 representation that supports dense computations and stencil computations.
 Once a computation written in a DSL is transformed to LIFT, pattern-based
 transformation can implement optimizations such as overlapped tiling and
 target many different architectures.
-Krishnamoorthy et al.~\cite{Krishnamoorthy07} present an automated tiling
+Krishnamoorthy et al.~\cite{krishnamoorthy2007effective} present an automated tiling
 technique for stencil computations in which neighboring tiles perform
 overlapping computations, which reduces communication and improves load
 balance.
 
 %[Image processing pipelines, which are also stencil applications.  
 Embedded DSLs for image processing pipelines, such as
-Halide~\cite{Ragan-Kelley2012,Ragan-Kelley2013} and
-PolyMage~\cite{Mullapudi2015}, support orthogonally specifying and
+Halide~\cite{ragan-kelley2013halide} and
+PolyMage~\cite{mullapudi2015polymage}, support orthogonally specifying and
 scheduling stencil computations.
 By exposing separate mechanisms for scheduling them, PolyMage supports
 various scheduling, fusion, and tile size selection
@@ -1131,7 +1090,7 @@ which leads to not all architectures being covered in some cases.
 Loop optimizations are used in a wide variety of compilers.
 Polyhedral optimizations have been incorporated into production compilers with Graphite~\cite{trifunovic2010graphite} and Polly~\cite{grosser2011polly}.
 Both works have similar approaches, starting by extracting polyhedral representation from an intermediate representation. 
-Graphite works on the GNU GIMPLE representation and Polly on LLVM-IR.
+Graphite works on the GNU GIMPLE representation and Polly on LLVM-IR\@.
 After extracting polyhedral representations, they perform a number of analyses and transformations and regenerate new, optimized code.
 Both approaches are general-purpose, automatic approaches.
 
@@ -1151,14 +1110,12 @@ A similar drawback applies to embedded DSLs that use their own compilers, such a
 %%%%%
 \subsection{Staging and Other Loop Chain Approaches}
 
-The most related work to this submission is work that more generally gathers
-a computational representation and other work that aims to specify and
-optimize loop chains.
+The most related work to this submission is work that gathers representations of computations and other work that aims to specify and optimize loop chains.
 Lightweight modular staging~\cite{LMS2012} presented an approach for gathering 
 a representation of computation to enable scheduling across that implementation
 in Scala.
 
-Bertolacci et al.~\cite{Bertolacci2016,Bertolacci2019} propose extensions to
+Bertolacci et al.~\cite{Bertolacci2016,bertolacci2019using} propose extensions to
 OpenMP pragmas to express and schedule loop chains.
 The approach requires annotations about data accesses in the pragmas.
 That work enables the specification of loop fusion and wavefront tiling. 
@@ -1169,7 +1126,7 @@ schedule across loop computations that share data.
 The loops in their case have indirect array accesses.
 Thus grouping computations to improve data locality requires a run-time
 inspection phase~\cite{Strout14IPDPS}.
-Luporini et al. use various Python library interfaces to specify computations
+Luporini et al.\ use various Python library interfaces to specify computations
 using per-loop modularization and then a lazy-computation step that gathers
 the loop descriptions and generates inspector-executor code for performing 
 sparse tiling.

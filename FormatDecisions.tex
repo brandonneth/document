@@ -51,7 +51,7 @@ Because the automated components are executed at run-time rather than compile-ti
 We make the following contributions:
 \begin{itemize}
 \item Programming abstractions for specifying and applying data layout transformations between loops, implemented in the \FormatDecisions{} API;
-\item An as-automated-as-desired transformation selection system using a built-in performance model to augment user decisions; and 
+\item An as-automated-as-desired transformation selection system using a built-in performance model to augment user decisions; and
 \item Support for a wider range of computations by expanding the types of iteration spaces that RAJA can represent.
 \end{itemize}
 I evaluate the contributions by comparing its performance and source lines of code (SLOC) changed/added to hand-implemented transformations on a collection of benchmark kernels.
@@ -298,7 +298,6 @@ decisions.set_format_for(F, {{1,0}}, knl3); // column-major
 auto computation = decisions.generate();
 computation();
 \end{lstlisting}
-
 \end{figure}
 
 RAJA's existing support for changing data layouts is limited to the point of instantiation.

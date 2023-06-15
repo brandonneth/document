@@ -37,6 +37,9 @@ openany, % eliminates all extra blank pages from entire document
 \usepackage{amssymb}
 
 \usepackage{tikz}
+
+\newcounter{row}
+\newcounter{col}
 \newcommand\setrow[6]{
   \setcounter{col}{1}
   \foreach \n in {#1, #2, #3, #4, #5, #6} {
@@ -47,8 +50,6 @@ openany, % eliminates all extra blank pages from entire document
   }
   \stepcounter{row}
 }
-\newcounter{row}
-\newcounter{col}
 
 \newcommand{\chapterabstract}[1]{
     \begin{quote}
@@ -61,7 +62,7 @@ openany, % eliminates all extra blank pages from entire document
 \end{quote}}
 
 \usepackage{lineno}
-\linenumbers
+\linenumbers{}
 
 \usepackage[normalem]{ulem}
 
@@ -160,17 +161,17 @@ escapeinside={<@}{@>}
 \begin{document}
 
 \include{FrontMatter.tex}
-\include{Introduction.tex}
+%\include{Introduction.tex}
 
 \include{RAJALC.tex}
 
-\include{FormatDecisions.tex}
+%\include{FormatDecisions.tex}
 
 %\include{SparseHistory.tex}
-\include{SparseRAJA.tex}
+%\include{SparseRAJA.tex}
 
 
-\include{Conclusion.tex}
+%\include{Conclusion.tex}
 
 
 
