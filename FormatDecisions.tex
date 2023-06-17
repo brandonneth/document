@@ -49,7 +49,7 @@ Because the automated components are executed at run-time rather than compile-ti
 We make the following contributions:
 \begin{itemize}
 \item Programming abstractions for specifying and applying data layout transformations between loops, implemented in the \FormatDecisions{} API\@;
-\item An as-automated-as-desired transformation selection system using a built-in performance model to augment user decisions; and
+\item An as-automated-as-desired transformation selection system using an in-library performance model to augment user decisions; and
 \item Support for a wider range of computations by expanding the types of iteration spaces that RAJA can represent.
 \end{itemize}
 I evaluate the contributions by comparing its performance and source lines of code (SLOC) changed/added to hand-implemented transformations on a collection of benchmark kernels.
@@ -71,7 +71,6 @@ Section 7 reviews related work and Section 8 concludes.
 	\begin{lstlisting}[
 		caption={The \textsc{3mm} kernel (E = A * B, F = C * D, G = E * F) implemented using RAJA.},
 		label={3MMStart}]
-	// Array declarations with layout specifications
 	auto row_major = make_permuted_layout(sizes, {{0,1}});
 	auto column_major = make_permuted_layout(sizes, {{1,0}});
 
@@ -79,42 +78,34 @@ Section 7 reviews related work and Section 8 concludes.
 	View2D B(B_data, column_major);
 	... initializations proceed similarly for C-G with row_major
 
-	// loop schedule
 	using POLICY = KernelPolicy<
 		statement::For<0,omp_parallel_for_exec,
 			statement::For<1,seq_exec,
 				statement::For<2,simd_exec,
 					statement::Lambda<0>
-				>
-			>
-		>
-	>;
+	>>>>;
 
-	// E = A * B;
-	auto loop_body1 = [&](auto i0, auto i1, auto i2) {
+	auto A_times_B = [&](auto i0, auto i1, auto i2) {
 		E(i0, i1) += A(i0,i2) * B(i2,i1);
 	};
-	// F = C * D;
-	auto loop_body2 = [&](auto i0, auto i1, auto i2) {
+	auto C_times_D = [&](auto i0, auto i1, auto i2) {
 		F(i0, i1) += C(i0,i2) * D(i2,i1);
 	};
-	// G = E * F
-	auto loop_body3 = [&](auto i0, auto i1, auto i2) {
+	auto E_times_F = [&](auto i0, auto i1, auto i2) {
 		G(i0, i1) += E(i0,i2) * F(i2,i1);
 	};
 	
 	auto one_dim = RangeSegment(0,N);
 	auto domain = make_tuple(one_dim, one_dim, one_dim);
 
-	auto knl1 = make_kernel<POLICY>(domain, loop_body1);
-	auto knl2 = make_kernel<POLICY>(domain, loop_body2);
-	auto knl3 = make_kernel<POLICY>(domain, loop_body3);
+	auto knl1 = make_kernel<POLICY>(domain, A_times_B);
+	auto knl2 = make_kernel<POLICY>(domain, C_times_D);
+	auto knl3 = make_kernel<POLICY>(domain, E_times_F);
 
 	knl1();
 	knl2();
 	knl3();
 	\end{lstlisting}
-
 \end{figure}
 
 
@@ -379,39 +370,37 @@ When it comes time to solve the model, the input format variables are set based 
 
 
 \begin{figure}
-	\begin{subfigure}[t]{0.2\textwidth}
-		\includegraphics[page=1,width=\textwidth]{ModelProgression.pdf}
+	\centering
+	\begin{subfigure}[t]{0.3\columnwidth}
+		\includegraphics[page=1,width=\columnwidth]{ModelProgression.pdf}
 		\caption{Initial state of the optimization problem.}\label{graphModel:1}
 	\end{subfigure}
-	\hspace{0.05\textwidth}
-	\begin{subfigure}[t]{0.2\textwidth}
-		\includegraphics[page=2,width=\textwidth]{ModelProgression.pdf}
+	\hspace{0.03\columnwidth}
+	\begin{subfigure}[t]{0.3\columnwidth}
+		\includegraphics[page=2,width=\columnwidth]{ModelProgression.pdf}
 		\caption{After registering that F should be row-major during the second computation.}\label{graphModel:2}
 	\end{subfigure}
-
-	\begin{subfigure}[t]{0.2\textwidth}
-		\includegraphics[page=3,width=\textwidth]{ModelProgression.pdf}
+	\hspace{0.03\columnwidth}
+	\begin{subfigure}[t]{0.3\columnwidth}
+		\includegraphics[page=3,width=\columnwidth]{ModelProgression.pdf}
 		\caption{After registering that F should be column-major during the third computation.}\label{graphModel:3}
 	\end{subfigure}
-	\hspace{0.05\textwidth}
-	\begin{subfigure}[t]{0.2\textwidth}
-		\includegraphics[page=4,width=\textwidth]{ModelProgression.pdf}
+	
+	\begin{subfigure}[t]{0.3\columnwidth}
+		\includegraphics[page=4,width=\columnwidth]{ModelProgression.pdf}
 		\caption{After the input format has been set and before the problem is solved. The model picks the output format and the format for knl1.}\label{graphModel:4}
 	\end{subfigure}
-
-	\vspace{5px}
-
-	\begin{subfigure}{0.45\textwidth}
+	\hspace{0.03\columnwidth}
+	\begin{subfigure}[t][0.15\columnwidth][b]{0.4\columnwidth}
 		\begin{align*}
-			x_{(F,row,in)} + x_{(F,col,in)} = 1 &\wedge 
-		x_{(F,row,knl1)} + x_{(F,col,knl1)} = 1 \wedge \\
-		x_{(F,row,knl2)} + x_{(F,col,knl2)} = 1 &\wedge 
-		x_{(F,row,knl3)} + x_{(F,col,knl3)} = 1 \wedge \\
-		x_{(F,row,out)} + x_{(F,col,out)} = 1 &\wedge 
-		x_{(F,row,knl2)} = 1 \wedge\\
-			x_{(F,col,knl3)} = 1 &\wedge x_{(F,row,in)} = 1
+			x_{(F,row,in)} &+ x_{(F,col,in)} = 1 \\
+			 \wedge \ x_{(F,row,knl1)} &+ x_{(F,col,knl1)} = 1 \\
+			\wedge \ x_{(F,row,knl2)} &+ x_{(F,col,knl2)} = 1 \\
+		  \wedge \ x_{(F,row,knl3)} &+ x_{(F,col,knl3)} = 1  \\
+			\wedge \ x_{(F,row,out)} &+ x_{(F,col,out)} = 1 \\
+			\wedge \ x_{(F,row,knl2)} = 1 \ &\wedge \ x_{(F,col,knl3)} = 1 \\
+			\wedge \ x_{(F,row,in)}& = 1
 		\end{align*}
-		
 		\caption{The algebraic representation of the constraints present when the problem is solved.}\label{graphModel:5}
 	\end{subfigure}
 
@@ -486,32 +475,65 @@ This kernel is constructed with a fixed policy and argument order so that one la
 
 
 \begin{figure*}
+% chktex-file 44
+\begin{subfigure}[b]{0.52\columnwidth}
+\begin{lstlisting}
+View2D A(a_data, rowMajor); 
+View2D B(b_data, colMajor); 
+View2D C(c_data, rowMajor);
 
-	\begin{subfigure}{0.9\textwidth}
+auto mmLam = [&](auto i0, auto i1, auto i2) {
+  C(i0,i1) += A(i0,i2) * B(i2,i1);
+};
+  
+using Pol012 = KernelPolicy< 
+  statement::For<0,loop_exec, // for i
+	  statement::For<1,loop_exec, // for j
+		  statement::For<2,loop_exec, // for k
+			  statement::Lambda<0>
+>>>>;
+using Pol201 = KernelPolicy< 
+	statement::For<2,loop_exec, // for k
+		statement::For<0,loop_exec, // for i
+			statement::For<1,loop_exec, // for j
+				statement::Lambda<0>
+>>>>;
+
+auto knl1 = make_kernel<Pol012>(segs, mmLam);
+auto knl2 = make_kernel<Pol201>(segs, mmLam);
+\end{lstlisting}
+\caption{Two kernels implementing matrix multiplication using different execution policies. The change in policy is equivalent to exchanging the loop nest order.}\label{accessOrder:code}
+\end{subfigure}
+\hspace{0.01\columnwidth}
+	\begin{subfigure}[b]{0.45\columnwidth}
 		\begin{center}
 			\begin{tabular} {|c|c|c|}
-				\hline
-				Kernel & Nesting Order \\ \hline
-				knl1 & (0,1,2) \\
-				knl2 & (2,0,1) \\
-				\hline
+\hline{}
+Kernel & Nesting Order \\ \hline
+knl1 & (0,1,2) \\
+knl2 & (2,0,1) \\
+\hline
 			\end{tabular}
-			\hspace{0.01\textwidth}
+
+			\vspace{5px}
+
 			\begin{tabular} {|c|c|c|}
 				\hline 
-				View & Argument Order & Layout Order \\  \hline 
+				View & \makecell{Argument \\ Order} & \makecell{Layout \\ Order} \\  \hline 
 				A & (0,2) & (0,1) \\ 
 				B & (2,1) & (1,0) \\
 				C & (0,1) & (0,1) \\
 				\hline
 			\end{tabular}
-			\hspace{0.01\textwidth}
-			\begin{tabular} {|c|c|c|}
+
+\vspace{5px}
+
+			\begin{tabular} {|c|c|}
 				\hline
 				Information & Source \\ \hline 
-				Argument Order & Symbolic evaluation  \\
-				Layout Order & Varied for modeling\\
-				Nesting Order & Template parameter \\
+				Argument Order & \makecell{Symbolic \\ evaluation}  \\ \hline
+				Layout Order & \makecell{Varied for \\ modeling}\\ \hline
+				Nesting Order & \makecell{Template \\parameter} \\
 				\hline
 			\end{tabular}
 		\end{center}
@@ -520,67 +542,21 @@ This kernel is constructed with a fixed policy and argument order so that one la
 
 	\vspace{10px}
 
-	\begin{subfigure}[b]{0.40\textwidth}
-		\begin{lstlisting}
-auto row_major = make_permuted_layout(sizes, {{0,1}});
-auto column_major = make_permuted_layout(sizes, {{1,0}});
-
-View2D A(a_data, row_major); 
-View2D B(b_data, column_major); 
-View2D C(c_data, row_major);
-
-auto matmul_lambda = [&](auto i0, auto i1, auto i2) {
-	C(i0,i1) += A(i0,i2) * B(i2,i1);
-}
-
-using Policy_012 = KernelPolicy< 
-	statement::For<0,loop_exec, // for i
-		statement::For<1,loop_exec, // for j
-			statement::For<2,loop_exec, // for k
-				statement::Lambda<0>
-			>
-		>
-	>
->;
-
-using Policy_201 = KernelPolicy< 
-	statement::For<2,loop_exec, // for k
-		statement::For<0,loop_exec, // for i
-			statement::For<1,loop_exec, // for j
-				statement::Lambda<0>
-			>
-		>
-	>
->;
-
-auto knl1 = make_kernel<Policy_012>(domain, matmul_lambda);
-auto knl2 = make_kernel<Policy_201>(domain, matmul_lambda);
-		\end{lstlisting}
-		\caption{Two kernels implementing matrix multiplication using different execution policies. The change in policy is equivalent to exchanging the loop nest order.}\label{accessOrder:code}
-	\end{subfigure}
-	\hspace{0.02\textwidth}
-	\begin{subfigure}[b]{0.45\textwidth}
+	\begin{subfigure}[b]{\columnwidth}
 		\begin{center}
 		Argument Order $\xrightarrow[\text{Layout Order}]{permute}$ Layout-Normalized Order
 
 		Layout-Normalized Order $\xrightarrow[\text{Nesting Order}]{indexof}$ Access Order
 
-		\vspace{5px}
-		\dots\dots\dots
-		\vspace{5px}
-
-		knl1, A: $(0,2)$ $\xrightarrow[(0,1)]{permute}$ $(0,2)$ $\xrightarrow[(0,1,2)]{indexof}$ $(0,2)$.
+%chktex-file 13
+\begin{tabular}{c c}
+		knl1, A: $(0,2)$ $\xrightarrow[(0,1)]{permute}$ $(0,2)$ $\xrightarrow[(0,1,2)]{indexof}$ $(0,2)$. & knl2, A: $(0,2)$ $\xrightarrow[(0,1)]{permute}$ $(2,0)$ $\xrightarrow[(2,0,1)]{indexof}$ $(0,1)$. \\
+		knl1, B: $(2,1)$ $\xrightarrow[(1,0)]{permute}$ $(1,2)$ $\xrightarrow[(0,1,2)]{indexof}$ $(1,2)$. & knl2, B: $(2,1)$ $\xrightarrow[(1,0)]{permute}$ $(1,2)$ $\xrightarrow[(2,0,1)]{indexof}$ $(2,0)$. \\
+		knl1, C: $(0,1)$ $\xrightarrow[(0,1)]{permute}$ $(0,1)$ $\xrightarrow[(0,1,2)]{indexof}$ $(0,1)$. & knl2, C: $(0,1)$ $\xrightarrow[(0,1)]{permute}$ $(0,1)$ $\xrightarrow[(2,0,1)]{indexof}$ $(1,2)$. \\
 		
-		knl1, B: $(2,1)$ $\xrightarrow[(1,0)]{permute}$ $(1,2)$ $\xrightarrow[(0,1,2)]{indexof}$ $(1,2)$.
 		
-		knl1, C: $(0,1)$ $\xrightarrow[(0,1)]{permute}$ $(0,1)$ $\xrightarrow[(0,1,2)]{indexof}$ $(0,1)$.
-		
-		knl2, A: $(0,2)$ $\xrightarrow[(0,1)]{permute}$ $(2,0)$ $\xrightarrow[(2,0,1)]{indexof}$ $(0,1)$.
-
-		knl2, B: $(2,1)$ $\xrightarrow[(1,0)]{permute}$ $(1,2)$ $\xrightarrow[(2,0,1)]{indexof}$ $(2,0)$.
-
-		knl2, C: $(0,1)$ $\xrightarrow[(0,1)]{permute}$ $(0,1)$ $\xrightarrow[(2,0,1)]{indexof}$ $(1,2)$.
-	\end{center}
+\end{tabular}
+		\end{center}
 	\caption{The calculation process. The first transformation normalizes different layouts. The second normalizes different nesting orders. The resulting tuple represents the canonical data access with the same performance behavior. References with the same access order can be modeled with the same microbenchmark.}\label{accessOrder:calc}
 	\end{subfigure}
 
@@ -588,6 +564,7 @@ auto knl2 = make_kernel<Policy_201>(domain, matmul_lambda);
 	\caption{Calculating access orders for the View references in two matrix multiplication kernels.~\ref{accessOrder:orders} shows the information extracted from~\ref{accessOrder:code}.~\ref{accessOrder:calc} shows how this information is used to estimate multiple reference costs with the same microbenchmark. }\label{accessOrder}
 
 \end{figure*}
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -617,9 +594,11 @@ It computes $A*B$, then $C*D$, then multiplies the results.
 
 \begin{table}
 	\centering
-	\begin{tabular}{| p{2.4cm} | p{1.1cm} | p{1.1cm} | p{1cm} | p{1cm}|}
+	%chktex-file 1
+	%chktex-file 8
+	\begin{tabular}{|c|c|c|c|c|}
 		\hline
-			\raggedright Variant \linebreak Name & \raggedright Kernel Objects & \raggedright Layout Changes & \raggedright Chosen By &  Written Using \tabularnewline
+		Variant Name & Kernel Objects & Layout Changes & Chosen By & Written Using \\
 		\hline
 		\verb.RAJALC. & Yes & No & -- & -- \\
 		\verb.Hand_Layout. & Yes & Yes & User & No API \\

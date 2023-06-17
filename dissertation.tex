@@ -2,7 +2,7 @@
 12pt, % The default document font size, options: 10pt, 11pt, 12pt
 %oneside, % Two side (alternating margins) for binding by default, uncomment to switch to one side
 english, % ngerman for German
-doublespacing, % Single line spacing (singlespacing), alternatives: onehalfspacing or doublespacing
+singlespacing,%doublespacing, % Single line spacing (singlespacing), alternatives: onehalfspacing or doublespacing
 %draft, % Uncomment to enable draft mode (no pictures, no links, overfull hboxes indicated)
 %nolistspacing, % If the document is onehalfspacing or doublespacing, uncomment this to set spacing in lists to single
 liststotoc, % Uncomment to add the list of figures/tables/etc to the table of contents
@@ -42,9 +42,9 @@ openany, % eliminates all extra blank pages from entire document
 \newcounter{col}
 \newcommand\setrow[6]{
   \setcounter{col}{1}
-  \foreach \n in {#1, #2, #3, #4, #5, #6} {
-    \edef\x{\value{col} - 0.5}
-    \edef\y{6.5 - \value{row}}
+  \foreach{} \n in {#1, #2, #3, #4, #5, #6} {
+    \edef\x{\value{col}-0.5}
+    \edef\y{6.5-\value{row}}
     \node[anchor=center] at (\x, \y) {\n};
     \stepcounter{col}
   }
@@ -90,7 +90,7 @@ breaklines=true,        % sets automatic line breaking
 breakatwhitespace=false,    % sets if automatic breaks should only happen at whitespace
 keywordstyle=\color{blue},       % keyword style
   %language=Octave,                 % the language of the code
-  otherkeywords={SearchVar,MV,TSS,tileExpr,Search,tFunc...},           % if you want to add more keywords to the set
+  otherkeywords={SearchVar,MV,TSS,tileExpr,Search},           % if you want to add more keywords to the set
   numberstyle=\tiny\color{black}, % the style that is used for the line-numbers
   rulecolor=\color{black},
 escapeinside={<@}{@>}
@@ -116,7 +116,7 @@ escapeinside={<@}{@>}
 \newcommand{\GauSei}[0]{{GauSei}}
 \newcommand{\InCholFact}[0]{{InCholFact}}
 
-
+\usepackage{makecell}
 
 \thesistitle{Type the title of your thesis here} % Your thesis title, this is used in the title, committee approval and abstract pages, print it elsewhere with \ttitle
 
@@ -160,18 +160,18 @@ escapeinside={<@}{@>}
 
 \begin{document}
 
-\include{FrontMatter.tex}
-\include{Introduction.tex}
+%\include{FrontMatter.tex}
+%\include{Introduction.tex}
 
-\include{RAJALC.tex}
+%include{RAJALC.tex}
 
-\include{FormatDecisions.tex}
+%\include{FormatDecisions.tex}
 
 %\include{SparseHistory.tex}
 \include{SparseRAJA.tex}
 
 
-\include{Conclusion.tex}
+%\include{Conclusion.tex}
 
 
 
