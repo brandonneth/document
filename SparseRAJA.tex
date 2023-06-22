@@ -11,7 +11,7 @@ The key idea of my approach is to treat the sparsity as its own component in the
 
 The challenges of this approach lie in achieving good performance without losing portability. 
 Two emerge specifically: constructing / traversing a sparse iteration space and accessing data without using searches. 
-For the problem of the iteration space and schedule, I use leader and follower iterators to represent and traverse sparse iteration spaces, built on the symbolic iteration space capabilites I developed to support dense triangular iteration spaces. 
+For the problem of the iteration space and schedule, I use leader and follower iterators to represent and traverse sparse iteration spaces, built on the symbolic iteration space capabilities I developed to support dense triangular iteration spaces. 
 This approach supports coordinate storage, and I show how it can be extended to support compressed row and column storage formats. 
 To efficiently traversal of the sparse structures, I incorporate an expected next access cache, inspired by prefetching systems.
 
@@ -32,16 +32,16 @@ While sparse computations are still foundational to physics simulations, new dom
   \centering
   \begin{subfigure}{0.45\textwidth}
     \includegraphics[page=1,width=\textwidth]{FormatDiagram.pdf}
-    \caption{Dense represention of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:Dense}
+    \caption{Dense representation of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:Dense}
   \end{subfigure}
   \begin{subfigure}{0.45\textwidth}
     \includegraphics[page=2,width=0.95\textwidth]{FormatDiagram.pdf}
-    \caption{Coordinate storage represention of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:COO}
+    \caption{Coordinate storage representation of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:COO}
   \end{subfigure}
 
   \begin{subfigure}[c]{0.45\textwidth}
     \includegraphics[page=3,width=0.95\textwidth]{FormatDiagram.pdf}
-    \caption{Compressed sparse row represention of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:CSR}
+    \caption{Compressed sparse row representation of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:CSR}
   \end{subfigure}
 \caption{Dense, COO, and CSR storage representations of the same data.}\label{FormatDiagram}
 \end{figure*}
@@ -67,7 +67,7 @@ The systems of linear equations are often enormous, with a variable in the syste
 Importantly, each point in the simulation is connected to a limited number of other points, usually only the points directly around it.
 This means that in the system's coefficient matrix, most entries will be zero, as the nonzero entries represent connections and relationships between different points.
 Because of the compression strategies used to only store the nonzero values, more cycles are spent getting the necessary data into the CPU than in a dense computation.
-To improve this situation, researchers have developed countless different storage formats, each geared towards different processor types, algorithms, and data characteristcs.
+To improve this situation, researchers have developed countless different storage formats, each geared towards different processor types, algorithms, and data characteristics.
 A sparse format that is specialized for the characteristics of a social network may not be ideal for storing the data of a sparse system of equations.
 
 \subsection{Challenges Writing Sparse Computations}
@@ -170,7 +170,7 @@ In this format, the View contains three vectors: one for the row indices, one fo
 These vectors contain as many elements as there are nonzero values.
 The third implementation shows the computation written for a View in compressed sparse row storage (CSR).
 This storage format is based on COO, but rather than storing every element of the row vector, it is compressed to a vector of offsets that indicate the start of each row within the column and value vectors.
-Figure~\ref{FormatDiagram} shos a graphical representation of the three formats.
+Figure~\ref{FormatDiagram} shows a graphical representation of the three formats.
 
 
 
@@ -205,7 +205,7 @@ As the sparse space is created out of the dense one, its representation needs to
 
 Finally is the data format, where the sparsity plays a greater role.
 While I restrict the prototype to COO and CHS formats, the dimensional ordering still plays an important role.
-This is because the particulars of the data storage order influence the efficency of contsructing the sparse iteration space and traversing through the data.
+This is because the particulars of the data storage order influence the efficiency of constructing the sparse iteration space and traversing through the data.
 Regardless of the underlying representation, the layout of the sparse view supports the standard multi-dimensional indexing functions that are used to access dense data.
 
 \subsection{Computational Complexity}
@@ -323,8 +323,8 @@ With this approach, before an access reverts to a search of the sparse data, it 
 If so, it skips the search and immediately returns the value.
 If not, it searches the View for the desired value.
 
-While this approach incurs the cost of checking the access against the expected, it avoids the much more expensive cost of searching the entire data structure each time teh View is read or written.
-Additionally, it only needs a snigle access function, avoiding the type manipulation of the other options, and supports correct execution for all kernels, regardless of data access patterns.
+While this approach incurs the cost of checking the access against the expected, it avoids the much more expensive cost of searching the entire data structure each time the View is read or written.
+Additionally, it only needs a single access function, avoiding the type manipulation of the other options, and supports correct execution for all kernels, regardless of data access patterns.
 Listing~\ref{expectedAccessImpl} shows a possible implementation of such an access function.
 \begin{figure}
 \begin{lstlisting}[caption={Possible implementation fo the Expected Next Access approach to efficient data traversal.},label=expectedAccessImpl]
@@ -355,8 +355,8 @@ In this approach, each format has two implementations.
 One implementation performs a random access search, while the other traverse the data in order. 
 If a programmer indicates the data will be traversed in order, or the runtime system can prove that it will, the View can be switched to the fast access format before kernel execution.
 
-This approach has the benefit of faster access times at the cost of a smaller domain of possible kernels it could uspport. 
-For example, it could not support a kernel that makes two accesses to the same View or one that makes multiple traveresals of the data, such as a matrix multiplication.
+This approach has the benefit of faster access times at the cost of a smaller domain of possible kernels it could support. 
+For example, it could not support a kernel that makes two accesses to the same View or one that makes multiple traversals of the data, such as a matrix multiplication.
 
 Abbreviated implementations of the formats are shown in Listing~\ref{specializedLayoutsImpl}.
 \begin{figure}
@@ -393,7 +393,7 @@ This is because the same index type has to be used for both sparse Views.
 \begin{figure}
 \begin{lstlisting}[caption={Reference implementation for the Specialized Index Types approach.}, label=specializedIndexImpl]
 
-ElemetType access(int i0, int i1) {
+ElementType access(int i0, int i1) {
   return searchAccess(i0,i1);
 }
 int fastIdx = 0;
@@ -408,7 +408,7 @@ While the latter two options offer the potential for better performance than the
 For this reason, I use the expected next access approach in the prototype.
 Certain computations present a challenge for all three approaches, such as the multiplication of a sparse matrix with its transpose.
 Support for efficient traversal in such a computation is a direction for future research, and likely relies on maintaining multiple copies of the data structure, stored in different orders.
-Such an approach could also mantain multiple expected access checks, one for each of the two storage directions.
+Such an approach could also maintain multiple expected access checks, one for each of the two storage directions.
 
 \section{Prototype Implementation}
 I implemented the approaches discussed in the previous two sections into a prototype for sparse computation support within RAJA\@.
@@ -559,7 +559,7 @@ In terms of representation, the expectation is that the \dense{} and \sparseraja
 In terms of performance, the \dense{} version is expected to be the outlier, as it executes many more iterations than the \sparseraja{} and \specialized{} versions.
 
 The evaluation process here is iterative, progressing through a loop of running the evaluation, profiling using hpctoolkit~\cite{adhianto2010hpctoolkit}, identifying potential optimizations, and implementing them. 
-This is in service of evaluating the overall question of the feasibility of acheiving comparable performance to the hand-specialized variants.
+This is in service of evaluating the overall question of the feasibility of achieving comparable performance to the hand-specialized variants.
 
 
 \subsection{Benchmark 1: SpMV}

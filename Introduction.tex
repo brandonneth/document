@@ -23,7 +23,7 @@ Changes in cache size, processor, accelerator, or interconnect all influence whi
 In the extreme, this means developers must maintain multiple versions of each application, one tuned for each system it will be used on.
 The code may be performant, but it is not \textit{portably} performant.
 
-In developing HPC applications, DoE places emphasis on creating codes that run performantly on many different systems.
+In developing HPC applications, DoE places emphasis on creating codes that are performant on many different systems.
 Performance portability libraries like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} address this problem by surfacing the performance ``knobs'' that an engineer can use to tune an application for a particular system. 
 These include loop schedule transformations --- like loop interchange, tiling, vectorization, OpenMP threading, offloading to accelerators --- and global data format transformations.
 While powerful, this approach focuses on tuning each loop independently, leaving out opportunities for optimizations that are applied across loops.
@@ -34,8 +34,8 @@ This chapter introduces the programming model of the RAJA library, the limitatio
 
 \section{Programming with Performance Portability Libraries}
 
-Performance portabile libraries are driven by the need to create modularized and easily-tuned code.
-This is achieved through a process of decomposing the computation into seperable parts.
+Performance portable libraries are driven by the need to create modularized and easily-tuned code.
+This is achieved through a process of decomposing the computation into separable parts.
 While the specifics of this decomposition differ across libraries, they share key components.
 Broadly, these components appear as data abstractions and operation/execution abstractions.
 Here, I illustrate these abstractions using a 5-point stencil computation, broken into Listings~\ref{stencilDataKernel} and~\ref{stencilSchedule}.
@@ -43,7 +43,7 @@ Stencil computations are an important class of computation that often appear in 
 This computation uses two $N \times M$ arrays \verb.A. and \verb.B..
 A reference implementation in C++ is shown in Listing~\ref{stencilCpp}.
 The RAJA implementation is longer than the standard C++, but this is not a problem.
-Decomposing a computation into interchangable parts brings benefits that greatly outweigh the cost of a few extra lines of code.
+Decomposing a computation into interchangeable parts brings benefits that greatly outweigh the cost of a few extra lines of code.
 Two of those benefits, per-loop schedule changes and global data layout changes, orient this section.
 
 \begin{figure}
@@ -111,7 +111,7 @@ kernel<SequentialPolicy>(iterationSpace, stencilLambda);
 
 Multi-dimensional data is exceedingly common in simulation codes.
 However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
-Thus, any multi-dimensional representation must be mapped to the 1-dimesional nature of the hardware.
+Thus, any multi-dimensional representation must be mapped to the 1-dimensional nature of the hardware.
 Usually, this is achieved by breaking the data into one-dimensional strips and storing each strip in sequence.
 Different ways to break the data into strips produce different orders of elements within memory.
 Two examples of these layouts are the well-known 2D column-major and row-major storage formats.
@@ -125,7 +125,7 @@ Traditional approaches to representing multi-dimensional data, such as the array
 This is due to the high degree of coupling between the layout and the method of data access. 
 For example, using these approaches, an access to the $(i,j)$th entry of a two dimensional structure will look like this: \verb.A[i][j]..
 Should the programmer want to try a column-major ordering instead of the default row-major, their only option is to completely transpose the data structure.
-This process starts with the cumbersome but managable task of redeclaring the sizes of each dimension in the structure's initializiation, switching the dimensions' extents.
+This process starts with the cumbersome but manageable task of re-declaring the sizes of each dimension in the structure's initialization, switching the dimensions' extents.
 But then, every single access to the structure needs to be changed. 
 All instances \verb.A[i][j]. must become \verb.A[j][i]..
 This is a enormous task, and one where well-camouflaged bugs are born. 
@@ -246,7 +246,7 @@ for(int i = 1; i < N-1; i++) {
 
 Loop fusion is a well-known optimization for improving data locality, appearing as an automated transformation in source to source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use decades before~\cite{warren1984hierarchical,cocke1971catalogue}.
 A simple example of this transformation is shown in Listing~\ref{fusionExample}.
-Rather than computing and storing the entirity of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the CPU's registers.
+Rather than computing and storing the entirety of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the CPU's registers.
 However, loop fusion can interfere with the parallelization of the loops being fused.
 Newer transformations, like overlapped tiling, have been developed to achieve the locality improvements of loop fusion while maintaining sufficient parallelism.
 
@@ -257,7 +257,7 @@ With overlapped tiling, this is amplified by the tile calculations, which obscur
 Overlapped tiling~\cite{holewinski2012high,krishnamoorthy2007effective} maintains parallelism by introduces small amounts of recomputation.
 In this transformation, each tile overlaps with those next to it, sharing some points of the iteration space.
 By choosing tile sizes that keep the fraction of recomputation low, parallel execution of the tiles still benefits from improved locality.
-This transformation has been ncorporated into an OpenCL compiler by Zhou et al~\cite{zhou2012hierarchical} and Polymage~\cite{mullapudi2015polymage}, a DSL for image processing pipelines, incorporates overlapped tiling into its automatic optimization passes.
+This transformation has been incorporated into an OpenCL compiler by Zhou et al~\cite{zhou2012hierarchical} and Polymage~\cite{mullapudi2015polymage}, a DSL for image processing pipelines, incorporates overlapped tiling into its automatic optimization passes.
 These approaches do not allow for programmer control over the tiling process.
 Halide~\cite{ragan-kelley2013halide}, another DSL for image processing pipelines, surfaces control over tiling to the programmer.
 For the optimization of existing codes, Bertolacci et al~\cite{bertolacci2019using} develop an approach based on pragma directives.
@@ -383,7 +383,7 @@ The challenge here is balancing user control of the transformations applied with
 To address this, the interface allows the programmer to succinctly specify the desired format for different pieces of data throughout a computation.
 Then, because I incorporate a runtime performance model into the system, it can identify potentially beneficial transformations in addition to those specified by the programmer.
 Overall, this creates an as-automated-as-desired system, built directly into the library.
-Additionally, I augment the interface for describing iteration spaces in RAJA to support non-hyperrectangular iteration spaces.
+Additionally, I augment the interface for describing iteration spaces in RAJA to iteration spaces that are not hyper-rectangular.
 An example code using \FormatDecisions{} is shown in Listing~\ref{Intro:FormatDecisions3MM}.
 Like with RAJALC, much less code is required to implement layout changes.
 Instead of managing the reorganization of data themselves, the programmer simply registers the formats the Views should have for different computations and the system manages applying the transformations.

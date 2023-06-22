@@ -668,7 +668,7 @@ need for parallelism, enabling larger tiles than otherwise possible.
 \section{Case Study: RAJA Performance Suite}
 
 I evaluate the advances through two case studies, porting the RAJA
-Performance Suite (RAJAPerf)~\cite{hornung2017raja} and  LULESH from
+Performance Suite (RAJAPerf)~\cite{hornung2017raja} and LULESH from
 standard RAJA to RAJALC\@
 In both case studies, I evaluate the performance and porting process
 of the RAJALC implementations and I detail benefits and limitations
@@ -1035,7 +1035,6 @@ stencil computations.
 They present algorithms that perform overlapped tiling within stencil
 computations and heuristics for fusing between the computations for GPUs.
 Their work demonstrates some possible performance benefits of scheduling
-
 across stencil computations when targeting GPUs and CPUs. In contrast,
 I present ways to enable and to control these optimizations across loops
 in the context of a more general, parallel library, specifically RAJA\@.
@@ -1142,7 +1141,7 @@ in each loop.
 Instead, symbolic analysis collects that information.
 
 \section{Conclusion}
-nter-loop optimizations have long been known to improve data locality and 
+Inter-loop optimizations have long been known to improve data locality and 
 to reduce synchronization costs of computations with loops the share data
 with producer-consumer relationships.
 However, the required refactoring has remained a tedious manual process with 

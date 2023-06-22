@@ -24,9 +24,9 @@ This is especially true when the optimization is applied across multiple loops o
 The original, modularized implementation of a computation is obscured by the changes of implementing the transformation. 
 When a code is meant to run on multiple systems or evolve to support new features, these optimizations can end up being more trouble than they are worth, the performance improvement offset by the increased maintenance and porting costs.
 
-%NEed to pivot to portabilitiy libraries
+
 Performance portability libraries --- like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} --- partially address this problem.
-By breaking the description of a computation into seperable components, programmers can experiment with different schedules and layouts without obscuring the code's underlying operation.
+By breaking the description of a computation into separable components, programmers can experiment with different schedules and layouts without obscuring the code's underlying operation.
 However, programmer control of the layout of data is limited to initialization. 
 Thus, a programmer must use that particular data format for the entire computation.
 Should they wish to change the data layout mid-computation, they would have to use multiple arrays for the same data, ensuring that each maintain the correct contents.
@@ -117,7 +117,7 @@ This section reviews how a computation is programmed in RAJA, the additions made
 
 RAJA's utility comes from the way it decomposes a computation into clear parts.
 A RAJA kernel has four: the operation, the iteration space, the schedule, and the data. 
-Listing~\ref{3MMStart} shows these different components in action to implement a sequence of matrix multplications, both how they are specified individually and how they are composed into a kernel.
+Listing~\ref{3MMStart} shows these different components in action to implement a sequence of matrix multiplications, both how they are specified individually and how they are composed into a kernel.
 
 The operation a kernel performs is provided as a function object, usually through defining a lambda function that executes one loop iteration.
 For the 3MM kernel in Listing~\ref{3MMStart}, the three lambdas are defined on lines 21 through 31. 
@@ -178,18 +178,13 @@ These restrictions are only present when the programmer wishes to use the automa
 This means that a programmer can still use \FormatDecisions{} to do manual experimentation with layout transformations, an example of which can be found in Section~\ref{sec:miniQMC}.
 
 \subsection{Symbolic Iteration Spaces}\label{sec:SymbolicSegment}
-While RAJA breaks the description of a computation into clear and seperable parts, one of those parts, the iteration space, is limited in its expressive capability.
+While RAJA breaks the description of a computation into clear and separable parts, one of those parts, the iteration space, is limited in its expressive capability.
 RAJA offers two abstractions for describing a dimension of an iteration space: the \verb.RangeSegment. and the \verb.ListSegment..
 The \verb.RangeSegment. represents a strided range of values while the \verb.ListSegment. represents an arbitrary list of values.
 The problem arises from the only way to combine segments to create multi-dimensional iteration spaces: cartesian product.
 Computations with dimensions that change through the computation, such as those with triangular iteration spaces, cannot be represented within this framework.
 Examples of these computations include LU decomposition, cholesky factorization, and statistical calculations like covariance and correlation.
 
-% A programmer who wishes to write a loop with an iteration space that is not a cartesian product has few options.
-% The first option is the only one that still uses RAJA and maintains the abstraction of a two dimensional loop: write a kernel that has a rectangular iteration space and guards iterations that are not part of the triangle.
-% The second option sticks with RAJA but loses the abstraction of a two dimensional loop entirely: construct and traverse an index array.
-% The third option sets aside RAJA entirely to maintain the abstraction of a two dimensional loop: use regular C++.
-% These options are all troublesome, for performance in the first case, and portability/maintainance in the second and third. 
 
 To address this limitation and represent iteration spaces with relations between the dimensions, I introduce the \verb.SymbolicSegment. type. 
 Unlike the \verb.RangeSegment., which requires integer values for its start, stop, and stride, the \verb.SymbolicSegment. supports expressions that combine other segments with constant values. 
@@ -792,7 +787,7 @@ Subsequent versions transforming only \verb.U. or \verb.V. indicate that this pe
 While I am able to identify a transformation sequence that improves performance compared to the \FormatDecisions{} baseline, there is significant performance overhead compared to the RAJA baseline, 23.63 and 10.18 seconds respectively.
 The first possible cause to explore is overhead from initializing the \FormatDecisions{} object, registering transformations, and generating the final computation. 
 To explore this hypothesis, I return to the baseline implementation and wrap these components in an additional timer. 
-However, this timer clocks a vanishly small contribution: 0.0022 seconds.
+However, this timer clocks a vanishingly small contribution: 0.0022 seconds.
 
 If the overhead is not a product of the \FormatDecisions{} object itself, it must be from the computation object it generates.
 Regardless of what conversions are registered, this computation object is a fixed-length loop chain.
@@ -850,7 +845,7 @@ Other work has implemented transformation pragmas into a source-to-source compil
 Domain-specific language approaches are another avenue for presenting users with control of the data layout transformations to apply. 
 Kronawitter et al.~\cite{kronawitter2018automatic} incorporate data layout specifications into the ExaSlang DSL.
 Using a polyhedral framework, the Tiramisu DSL~\cite{baghdadi2019tiramisu} also enables data layout transformation specifications.
-In constrast to these specialized approaches, our approach seeks to support a wider class of computations without needing the additional machinery required to use DSLs. 
+In contrast to these specialized approaches, our approach seeks to support a wider class of computations without needing the additional machinery required to use DSLs. 
 
 
 \section{Conclusion}
