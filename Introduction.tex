@@ -2,28 +2,28 @@
 
 High performance computer simulation plays a foundational role in modern science and engineering.
 For example, considering the nine-figure cost of a utility-scale wind farm~\cite{wiser2022land}, there is significant interest in ensuring the farm will behave as expected. 
-Computer simulation can help provide this confidence.
+High performance computing (HPC), with its focus on the performant execution of applications at this scale, can help provide this confidence.
 When developing these types of applications, three interrelated concerns must be balanced. 
 
 First is developer productivity.
 From the earliest days of electronic computing~\cite{backus1957fortran} to today, code has been expensive to write.
-Every prototype, new feature, or bug fix requires developer labor, and the productivity of the languages, libraries, and tools they use determines how much.
-While in some circumstances it is economical to use the most productive tools available, this is not always the case.
-In the realm of high performance computing (HPC) for example, applications cannot solely be quick to develop; they must also be quick to run.
+Every prototype, new feature, or bug fix requires programmer labor, and the productivity of the languages, libraries, and tools they use determines how much.
+%While in some circumstances it is economical to use the most productive tools available, this is not always the case.
+%In the realm of high performance computing (HPC) for example, applications cannot solely be quick to develop; they must also be quick to run.
 
 The second concern is exactly this: application performance, in terms of time, flops, or watts.
 More efficient code mean solving bigger problems, faster and more accurately.
-Thus, developers expend considerable effort optimizing the performance of their applications, often for the specific architectural configuration of the target system.
+Thus, especially in the realm of HPC, developers expend considerable effort optimizing the performance of their applications, often for the specific architectural configuration of the target system.
 The more productive their tools, the easier, faster, and cheaper optimization is.
 
 The third concern, cross-system portability, emerges from the diversity of computing hardware. 
-While specialized optimization results in code that utilizes the target system well, an application tuned for one machine is not guaranteed to perform well on another.
-In fact, finding one set of transformations that give good performance across different systems is not even always possible.
-Changes in cache size, processor, accelerator, or interconnect all influence which version of a code is most performant.
+While specialized optimization results in code that uses the target system well, an application tuned for one machine is not guaranteed to perform well on another.
+In fact, finding one set of transformations that give good performance across different systems is not always possible.
+Differences in cache size, processor, accelerator, or interconnect all influence which version of a code is most performant.
 In the extreme, this means developers must maintain multiple versions of each application, one tuned for each system it will be used on.
 The code may be performant, but it is not \textit{portably} performant.
 
-In developing HPC applications, DoE places emphasis on creating codes that are performant on many different systems.
+In developing HPC applications, the Department of Energy places emphasis on creating codes that are performant on many different systems.
 Performance portability libraries like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} address this problem by surfacing the performance ``knobs'' that an engineer can use to tune an application for a particular system. 
 These include loop schedule transformations --- like loop interchange, tiling, vectorization, OpenMP threading, offloading to accelerators --- and global data format transformations.
 While powerful, this approach focuses on tuning each loop independently, leaving out opportunities for optimizations that are applied across loops.
@@ -37,55 +37,53 @@ This chapter introduces the programming model of the RAJA library, the limitatio
 Performance portable libraries are driven by the need to create modularized and easily-tuned code.
 This is achieved through a process of decomposing the computation into separable parts.
 While the specifics of this decomposition differ across libraries, they share key components.
-Broadly, these components appear as data abstractions and operation/execution abstractions.
-Here, I illustrate these abstractions using a 5-point stencil computation, broken into Listings~\ref{stencilDataKernel} and~\ref{stencilSchedule}.
-Stencil computations are an important class of computation that often appear in image processing and the solution of differential equations.
-This computation uses two $N \times M$ arrays \verb.A. and \verb.B..
-A reference implementation in C++ is shown in Listing~\ref{stencilCpp}.
-The RAJA implementation is longer than the standard C++, but this is not a problem.
-Decomposing a computation into interchangeable parts brings benefits that greatly outweigh the cost of a few extra lines of code.
-Two of those benefits, per-loop schedule changes and global data layout changes, orient this section.
+Broadly, these components appear as data abstractions and loop abstractions.
 
-\begin{figure}
-\begin{lstlisting}[caption={C++ reference implementation of a 5-point stencil computation},label=stencilCpp]
-  // Initialize and prepare A and B...
-  std::vector<std::vector<double>> A;
-  std::vector<std::vector<double>> B;
-  for(int i = 0; i < N; i++) {
-    std::vector<double> a(M);
-    std::vector<double> b(M);
-    A.push_back(a);
-    B.push_back(b);
+\begin{figure}[h]
+\begin{lstlisting}[caption={C++ reference implementation of a 5-point stencil computation.},label=stencilCpp]
+// Initialize and prepare A and B...
+std::vector<std::vector<double>> A(N);
+std::vector<std::vector<double>> B(N);
+for(int i = 0; i < N; i++) {
+  std::vector<double> a(M);
+  std::vector<double> b(M);
+  A[i] = a
+  B[i] = b;
+}
+
+// Fill with starting conditions (omitted here and in RAJA version)
+
+// Execute!
+for(int i = 1; i < N-1; i++) {
+  for (int j = 1; j < M-1; j++) {
+    B[i][j] = 0.2 * (A[i][j] + A[i-1][j] + A[i+1][j] + A[i][j-1] + A[i][j+1]);
   }
-
-  // Fill with starting conditions (omitted here and in RAJA version)
-
-  // Execute!
-  for(int i = 1; i < N-1; i++) {
-    for (int j = 1; j < M-1; j++) {
-      B(i,j) = 0.2 * (A(i,j) + A(i-1,j) + A(i+1, j) + A(i,j-1) + A(i,j+1));
-    }
-  }
+}
 \end{lstlisting}
 \end{figure}
 
-\subsection{Data Abstractions}
+Here, I illustrate these abstractions in RAJA using a 5-point stencil computation (see Listings~\ref{stencilRAJA},~\ref{stencilData} and~\ref{stencilSchedule}).
+Stencil computations are an important class of computation that often appear in image processing and the solution of differential equations.
+The example computation uses two $N \times M$ arrays \verb.A. and \verb.B..
+A reference implementation in C++ is shown in Listing~\ref{stencilCpp}.
+The RAJA implementation is longer than the standard C++, but this is not a problem.
+Decomposing a computation into interchangeable parts brings benefits that greatly outweigh the cost of a few extra lines of code.
+Two of those benefits, per-loop schedule changes and global data layout changes, are the focus of this section.
 
 \begin{figure}
-\begin{lstlisting}[caption={Data declaration using RAJA multi-dimensional data abstractions, called Views, followed by the description of a 5-point stencil kernel. Changing a View's layout only requires changing the second argument in its constructor.}, label=stencilDataKernel]
+\begin{lstlisting}[caption={Data declaration using RAJA multi-dimensional data abstractions, called Views, followed by the description of a 5-point stencil kernel. Data is initialized to use row-major storage.}, label=stencilRAJA]
+// Data Abstractions
+
 std::array<size_t, 2> dimLengths = {N,M};
 
 // Create the layout type...
 Layout<2> rowMajor = make_layout(dimLengths, {0,1}); // dim0, then dim1
-Layout<2> colMajor = make_layout(dimLengths, {1,0}); // dim1, then dim0
 
 // Then initialize the Views...
-// OPTION 1: with row-major storage
 View<double,2> A(new double[N*M], rowMajor); 
 View<double,2> B(new double[N*M], rowMajor);
-// OPTION 2: with column-major storage
-View<double,2> A(new double[N*M], colMajor); // Note that only the second arg changes
-View<double,2> B(new double[N*M], colMajor);
+
+// Loop Abstractions
 
 // Declare a lambda that executes one iteration of the computation...
 auto stencilLambda = [=](int i, int j) {
@@ -109,7 +107,79 @@ kernel<SequentialPolicy>(iterationSpace, stencilLambda);
 \end{lstlisting}
 \end{figure}
 
-Multi-dimensional data is exceedingly common in simulation codes.
+
+
+\subsection{Data Abstractions}
+\begin{figure}
+\begin{lstlisting}[caption={Diff for applying global layout transformations in RAJA version of 5-point stencil code. The new code uses column-major instead of row-major.}, label=stencilRAJADiff]
+// Data Abstractions
+
+std::array<size_t, 2> dimLengths = {N,M};
+
+// Create the layout type...
+
+<@\hl{-}@> <@\st{Layout<2> rowMajor = make\_layout(dimLengths, \{0,1\}); // dim0, then dim1}@>
+<@\hl{+}@> Layout<2> <@\hl{col}@>Major = make_layout(dimLengths, <@\hl{\{1,0\}}@>); // dim1, then dim0
+
+// Then initialize the Views...
+<@\hl{-}@> <@\st{View<double,2> A(new double[N*M], rowMajor);}@>
+<@\hl{+}@> View<double,2> A(new double[N*M], <@\hl{col}@>Major); 
+<@\hl{-}@> <@\st{View<double,2> B(new double[N*M], rowMajor);}@>
+<@\hl{+}@> View<double,2> B(new double[N*M], <@\hl{col}@>Major);
+
+// Loop Abstractions
+
+// Declare a lambda that executes one iteration of the computation...
+auto stencilLambda = [=](int i, int j) {
+  B(i,j) = 0.2 * (A(i,j) + A(i-1,j) + A(i+1, j) + A(i,j-1) + A(i,j+1));
+};
+
+// Create the iteration space...
+auto iDimension = RangeSegment(1,N-1);
+auto jDimension = RangeSegment(1,M-1);
+auto iterationSpace = make_tuple(iDimension,jDimension);
+
+// Define the kernel execution policy...
+using SequentialPolicy = KernelPolicy<
+  statement::For<0,seq_exec, // Sequential outer loop traverses iDimension
+    statement::For<1,seq_exec, // Sequential inner loop traverses jDimension
+      statement::Lambda<0> // Calls lambda
+>>>;
+
+// Launch!
+kernel<SequentialPolicy>(iterationSpace, stencilLambda);
+\end{lstlisting}
+\end{figure}
+
+
+\begin{figure}
+\begin{lstlisting}[caption={Code changes required to switch from row- to column-major order in the C++ implementation of the 5 point stencil.},label=stencilCppColumn]
+<@\hl{-} \st{std::vector<std::vector<double>}\st{> A(N);} @>
+<@\hl{+}@> std::vector<std::vector<double>> A(<@\hl{M}@>);
+<@\hl{-} \st{std::vector<std::vector<double>}\st{> B(N);} @>
+<@\hl{+}@> std::vector<std::vector<double>> B(<@\hl{M}@>);
+
+<@\hl{-} \st{for(int i = 0; i < N; i++) \{}@>
+<@\hl{+}@> for(int i = 0; i < <@\hl{M}@>; i++) {
+<@\hl{-}  \st{std::vector<double> a(M);}@>
+<@\hl{+}@>  std::vector<double> a(<@\hl{N}@>);
+<@\hl{-}  \st{std::vector<double> b(M);}@>
+<@\hl{+}@>  std::vector<double> b(<@\hl{N}@>);
+  A[i] = a
+  B[i] = b;
+}
+
+for(int i = 1; i < N-1; i++) {
+  for (int j = 1; j < M-1; j++) {
+<@\hl{-}@>    <@\st{B[i][j] = 0.2 * (A[i][j] + A[i-1][j] + A[i+1][j] + A[i][j-1] + A[i][j+1]);} @>
+<@\hl{+}@>    B<@\hl{[j][i]}@> = 0.2 * (A<@\hl{[j][i]}@> + A<@\hl{[j][i-1]}@> + A<@\hl{[j][i+1]}@> + A<@\hl{[j-1][i]}@> + A<@\hl{[j+1][i]}@>);
+  }
+}
+\end{lstlisting}
+\end{figure}
+First, we turn to RAJA's abstraction for multidimensional data.
+Then, to the layout transformations it enables.
+Multidimensional data is exceedingly common in simulation codes.
 However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
 Thus, any multi-dimensional representation must be mapped to the 1-dimensional nature of the hardware.
 Usually, this is achieved by breaking the data into one-dimensional strips and storing each strip in sequence.
@@ -121,20 +191,22 @@ When tuning an application for a new system, changing the layout of data in memo
 These differences are especially relevant between different processor types, where a data layout that performs well on a CPU is not best for a GPU\@.
 It can also impact performance between two CPUs because of threading and cache behaviors~\cite{trott2021kokkos}.
 
+
 Traditional approaches to representing multi-dimensional data, such as the array of pointers or the vector of vectors used in Listing~\ref{stencilCpp} do not admit an easy data layout change.
 This is due to the high degree of coupling between the layout and the method of data access. 
 For example, using these approaches, an access to the $(i,j)$th entry of a two dimensional structure will look like this: \verb.A[i][j]..
 Should the programmer want to try a column-major ordering instead of the default row-major, their only option is to completely transpose the data structure.
-This process starts with the cumbersome but manageable task of re-declaring the sizes of each dimension in the structure's initialization, switching the dimensions' extents.
+This process starts with the cumbersome but manageable task of re-declaring the sizes of each dimension in the structure's initialization, switching the dimensions' extents (see Listing~\ref{stencilCppColumn}).
 But then, every single access to the structure needs to be changed. 
 All instances \verb.A[i][j]. must become \verb.A[j][i]..
-This is a enormous task, and one where well-camouflaged bugs are born. 
+
+This can be a significant task, and one where well-camouflaged bugs are born. 
 In a paragraph of prose, \verb.[i][j]. is easily distinguished from \verb.[j][i]..
 In a complicated loop nest making hundreds of data accesses, all using different orderings of the iterators, one forgotten (or extra) swap quickly creates crashes.
 And of course, once the transformation has been applied and the new bugs squashed, it may turn out that a layout change had no effect, or even a negative one.
 
 Called a View in RAJA and Kokkos and an Array in YAKL, multidimensional data structures are a key abstraction through which performance portability libraries surface portability controls to the programmer.
-RAJA's View abstraction is shown in action in the first half of Listing~\ref{stencilDataKernel}, which shows the two possible layout options for the data in the 5-point stencil computation.
+RAJA's View abstraction is shown in action in the first half of Listing~\ref{stencilRAJA}, and in Listing~\ref{stencilDataDiff}, which shows the code changes necessary to switch layouts.
 Because data layout can be changed for the entire program just by changing how the data is declared or initialized, global layout transformations are brought back into the programmer's thought-loop.
 Instead of taking hours, the question ``How would this perform with a different data layout?'' is answered in minutes.
 These easy changes are made possible by making the layout of the data an explicit parameter to the multi-dimensional data abstractions.
@@ -175,46 +247,80 @@ using ParallelTiled = KernelPolicy<
 \end{lstlisting}
 \end{figure}
 
-As with their data abstractions, performance portability libraries share an approach to their abstractions for specifying and executing the operations of a computation.
-At a high level, the computation is decomposed into an operation describing what to do, an iteration space describing which values to do it for, and scheduling information describing how to order and distribute them among the different processing elements.
-This process is shown in RAJA for the 5-point stencil computation in the second half of Listing~\ref{stencilDataKernel}.
+\begin{figure}
+\begin{lstlisting}[caption={Hand-changed loop schedules for C++ 5-point stencil computation.}, label={stencilScheduleCpp}]
+// OpenMP with Vectorization
+#pragma omp parallel for
+for(int i = 1; i < N-1; i++) {
+  #pragma omp simd
+  for (int j = 1; j < M-1; j++) {
+    B[i][j] = 0.2 * (A[i][j] + A[i-1][j] + A[i+1][j] + A[i][j-1] + A[i][j+1]);
+  }
+}
 
-All three libraries share an approach for representing the operation of an individual iteration: the functor.
+//Interchanged
+for (int j = 1; j < M-1; j++) {
+  for(int i = 1; i < N-1; i++) {
+    B[i][j] = 0.2 * (A[i][j] + A[i-1][j] + A[i+1][j] + A[i][j-1] + A[i][j+1]);
+  }
+}
+
+//Parallel Tiled
+#pragma omp parallel for
+for(int iTile = 0; iTile * 64 < N-1; iTile++) {
+  int iLow = max(1, iTile * 64);
+  int iHigh = min((iTile+1) * 64, N-1);
+  for(int jTile = 0; jTile * 64 < M -1; jTile++) {
+    int jLow = max(1, jTile * 64);
+    int jHigh = min((jTile+1) * 64, M-1);
+    for(int i = iLow; i < iHigh; i++) {
+      #pragma omp simd
+      for(int j = jLow; j < jHigh; j++) {
+        B[i][j] = 0.2 * (A[i][j] + A[i-1][j] + A[i+1][j] + A[i][j-1] + A[i][j+1]);
+      }
+    }
+  }
+}
+\end{lstlisting}
+\end{figure}
+
+As with their data abstractions, performance portability libraries share an approach to their abstractions for specifying and executing loop nests.
+what to do, 
+At a high level, a loop nest is decomposed into loop bodies describing the operation to do, an iteration space describing the values to do it for, and scheduling information describing how to order and distribute the iterations among the different processing elements.
+This process is shown in RAJA for the 5-point stencil computation in the second half of Listing~\ref{stencilRAJA}.
+
+All three performance portability libraries share an approach for representing the operation of an individual loop iteration: the functor.
 A \textit{funct}or is just an object that can be called like a \textit{funct}ion, meaning it defines the call operator. 
-In practice, these are most often defined using lambda closures, which ``capture'' the values of variables used in their definition.
-The \verb.stencilLambda. in Listing~\ref{stencilDataKernel} is an example of such a lambda closure, and captures the two Views used in its body.
+In practice, these are most often defined using lambda closures, which are unnamed functions that ``capture'' the values of variables used in their definition.
+The \verb.stencilLambda. in Listing~\ref{stencilRAJA} is an example of such a lambda closure, and captures the two array Views used in its body.
 The parameters of the lambda represent the indices of a point in the iteration space.
 
-The iteration space is specified as a tuple of containers.
-In Listing~\ref{stencilDataKernel}, the two dimension of the iteration space, \verb.iDimension. and \verb.jDimension. are defined using the \verb.RangeSegment. function.
+The iteration space is specified as a tuple of containers, usually ranges and lists.
+In Listing~\ref{stencilRAJA}, the two dimension of the iteration space, \verb.iDimension. and \verb.jDimension. are defined using the \verb.RangeSegment. function.
 This function creates a range from the first argument to the second.
 Then, the two dimension are grouped into the iteration space tuple.
 
 Last is the schedule for the computation.
 In RAJA, these comes as the kernel policy type.
-In Listing~\ref{stencilDataKernel}, the policy type is \verb.SequentialPolicy..
+In Listing~\ref{stencilRAJA}, the policy type is \verb.SequentialPolicy..
 This policy corresponds to a canonical, sequential, 2-dimensional loop nest.
 Changing parts of the kernel policy change the execution schedule.  %good
 Listing~\ref{stencilSchedule} shows some of these changes: one for loop interchange, one for OpenMP parallelization and vectorization, and one for loop tiling.
+The comparable transformations applied to the C++ implementation are shown in Listing~\ref{stencilScheduleCpp}.
 
-Once these components are specified, they are combined and executed using the \verb.kernel. method, shown on the final line of Listing~\ref{stencilDataKernel}.
+Once these components are specified, they are combined and executed using the \verb.kernel. method, shown on the final line of Listing~\ref{stencilRAJA}.
 Changing the loop schedule of the computation is as simple as changing the template argument of the call to a different policy.
 
 \section{Transformation Scope Limitations}
 
-The transformations that these libraries surface to the programmer support a common paradigm for program optimization: measure, identify an expensive loop or kernel, try a transformation, and repeat.
+Performance portability libraries provide the ability to apply transformations per-loop and set the data layout per computation.
+This guides the programmer towards a common paradigm for program optimization: measure, identify an expensive loop or kernel, try a transformation, and repeat.
 Using this paradigm, each kernel is optimized as a standalone piece of code.
 While useful for leveraging the maximum possible parallelism from an application, it draws attention away from the interrelation of the kernels.
-This means that important opportunities for performance optimization can go overlooked.
+This means that important opportunities for optimization can go overlooked.
+This section reviews three that can lead to significant performance improvement in certain contexts: loop fusion, inter-loop layout transformations, and sparse format transformations.
 
-\todo{find somewhere to put: What these libraries provide is the ability to apply transformations per-loop and set the data layout per computation.}
-
-\subsection{Inter-Loop Transformations}
-Transformations at the inter-loop scope often target the reuse of data between loops.
-In computations bottlenecked by data transfer speeds, like sparse computations and the stencil computation above, these optimizations are especially beneficial. 
-Two examples are loop fusion and inter-kernel layout transformations.
-
-\subsubsection{Schedule Changes: Loop Fusion Example}
+\subsection{Schedule Changes: Loop Fusion Example}
 \begin{figure}
 \begin{lstlisting}[caption={Three loops, with and without loop fusion.},label=fusionExample]
 //without fusion
@@ -244,17 +350,25 @@ for(int i = 1; i < N-1; i++) {
 \end{lstlisting}
 \end{figure}
 
-Loop fusion is a well-known optimization for improving data locality, appearing as an automated transformation in source to source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use decades before~\cite{warren1984hierarchical,cocke1971catalogue}.
+Transformations at the inter-loop scope often target the reuse of data between loops.
+In computations bottlenecked by data transfer speeds, like sparse computations and the stencil computation above, these optimizations are especially beneficial. 
+Two examples are loop fusion and inter-kernel layout transformations.
+
+Loop fusion is a well-known optimization for improving data locality in sequences of loops that use common data.
+It appears as an automated transformation in source-to-source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use in hand-optimization decades before~\cite{warren1984hierarchical,cocke1971catalogue}.
+Modern production C++ compilers can do loop fusion in some simple-to-analyze situations, but function calls and pointer aliasing prevent complete automation.
 A simple example of this transformation is shown in Listing~\ref{fusionExample}.
-Rather than computing and storing the entirety of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the CPU's registers.
-However, loop fusion can interfere with the parallelization of the loops being fused.
-Newer transformations, like overlapped tiling, have been developed to achieve the locality improvements of loop fusion while maintaining sufficient parallelism.
+Rather than computing and storing the entirety of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the processor's registers.
 
-While the fused code shown in Listing~\ref{fusionExample} is not appreciably more complex than the original sequence of kernels, it does require breaking some of the loop iterations out of the loop nest.
-This makes it more difficult to parse exactly what the code is doing and why parts of it are in the loop and others aren't.
-With overlapped tiling, this is amplified by the tile calculations, which obscure what parts of the code are the operation and what parts are part of the scheduling. 
+Unfortunately, this benefit is not guaranteed.
+As the number of fused loops increases, so does the size of the loop body, and with it the register pressure. 
+At a certain point, more values are used in the fused body than exist registers to hold them.
+Extras spill into memory, with performance implications.
+Because different processors have different register designs, a fusion transformation beneficial for one machine may not be for others.
+Furthermore, loop fusion can interfere with the parallelization of the loops being fused.
 
-Overlapped tiling~\cite{holewinski2012high,krishnamoorthy2007effective} maintains parallelism by introduces small amounts of recomputation.
+Newer transformations, like overlapped tiling~\cite{holewinski2012high,krishnamoorthy2007effective}, have been developed to achieve the locality improvements of loop fusion while maintaining sufficient parallelism.
+Overlapped tiling does this by introducing small amounts of recomputation.
 In this transformation, each tile overlaps with those next to it, sharing some points of the iteration space.
 By choosing tile sizes that keep the fraction of recomputation low, parallel execution of the tiles still benefits from improved locality.
 This transformation has been incorporated into an OpenCL compiler by Zhou et al~\cite{zhou2012hierarchical} and Polymage~\cite{mullapudi2015polymage}, a DSL for image processing pipelines, incorporates overlapped tiling into its automatic optimization passes.
@@ -262,8 +376,11 @@ These approaches do not allow for programmer control over the tiling process.
 Halide~\cite{ragan-kelley2013halide}, another DSL for image processing pipelines, surfaces control over tiling to the programmer.
 For the optimization of existing codes, Bertolacci et al~\cite{bertolacci2019using} develop an approach based on pragma directives.
 
+While the fused code shown in Listing~\ref{fusionExample} is not appreciably more complex than the original sequence of kernels, it does require breaking some of the loop iterations out of the loop nest.
+This makes it more difficult to parse exactly what the code is doing and why parts of it are in the loop and others are not.
+With overlapped tiling, this is amplified by the tile calculations, which obscure what parts of the code are the operation and what parts are part of the scheduling. 
 
-\subsubsection{Layout Changes: Transpose Example}
+\subsection{Layout Changes: Transpose Example}
 \begin{figure}
 \begin{lstlisting}[caption={Changing a View's data layout between computations by hand.},label={FormatChangeByHand}]
 //C = A * B
@@ -292,30 +409,32 @@ delete[] tmp1;
 knl2();
 \end{lstlisting}
 \end{figure}
-
-If two computations access the same data in different orders, it can be worthwhile to change how that data is organized in memory so that both computations access the data in the most efficient way possible.
+Like inter-loop schedule transformations, inter-loop layout transformations can improve the performance of some sequences of loop nests.
+If two loop nests access the same data in different orders, it can be worthwhile to change how that data is organized in memory so that both loop nests access the data in the most efficient way possible.
 As a simple example, consider the matrix multiplication $C = A * B$ followed by the matrix multiplication $E = A^{\top} * D$. 
-The way these computations will traverse the matrix $A$ is different. 
+The way these loop nests will traverse the matrix $A$ is different. 
 In the computation of $C$, the data of $A$ is traversed across the rows, while in the computation of $E$, it is traversed across the columns.
 Assume for a moment that $A$ is stored in row-major order.
 Because the $C$ computation traverses the data of $A$ by rows, adjacent iterations will access elements of $A$ that are adjacent in memory.
 This has much more favorable cache behavior than the computation of $E$, where adjacent iterations access elements of $A$ that are more distant in memory.
-Performance can be improved by changing the layout of $A$ between the two computations, ensuring that both kernels have favorable access patterns.
+Performance can be improved by changing the layout of $A$ between the two loop nests, ensuring that both have favorable access patterns.
 However, applying such a transformation by hand is, as discussed above, time consuming and error prone. 
 An example of such a manual implementation of this transformation is shown in Listing~\ref{FormatChangeByHand}.
+While RAJA does support changing the layout of a View at a global scope, it does not support making these changes between loop nests. 
 
-Early work on the problem of automatically selecting data layouts were done in the High Performance Fortran and D programming languages using graph theoretic formulations, specifically for distributed computing systems\cite{kennedy1995automatic,kennedy1998automatic}.
-Later work reformulated the decision problem as constraint networks\cite{chen2005constraint}.
+Early work on the problem of automatically selecting data layouts were done in the High Performance Fortran and D programming languages using graph theoretic formulations, specifically for distributed computing systems~\cite{kennedy1995automatic,kennedy1998automatic}.
+Later work reformulated the decision problem as constraint networks~\cite{chen2005constraint}.
 With the rise of multicore and vector processors, new approaches to transformations were developed~\cite{lu2009data,henretty2011data,zhang2011optimizing}.
 Jaeger and Barthou developed an automated approach to transformation selection for stencil computations on GPUs~\cite{jaeger2012automatic}.
 More recently, Kronawitter et al incorporated layout transformations into the ExaStencil DSL, providing a balance of user control and automation~\cite{kronawitter2018automatic}.
+Because these works have all been parts of restructuring compilers or domain specific languages, they cannot be used directly to transform RAJA codes.
 
 \subsection{Sparse Computations}
 
 The previous subsection discusses changing dense data layouts.
 Sparse computations, meaning computations that operate on data containing mostly zeros, are both critical to scientific computing and benefit especially from data movement optimizations.
 Because data in these computations is mostly empty, different storage schemes are used to avoid storing the zero values explicitly. 
-These storage approaches utilize compression and abstraction strategies that constrain accesses to the data.
+These storage approaches use compression and abstraction strategies that constrain accesses to the data.
 This means that sparse computations are more strongly memory-bound than dense computations, as more cycles are needed to find and move data around.
 
 Sparse formats abound~\cite{langr2015evaluation}. 
@@ -331,17 +450,17 @@ By restricting the computation space to tensor algebra expressions, their approa
 Finally, the sparse polyhedral framework~\cite{strout2016approach} allows for a variety of composable optimizing transformations on sparse codes~~\cite{ahmad2017optimizing}.
 Recent work has enabled the synthesis of transformations among different formats~\cite{popoola2023code}, and a code description that decouples the format from the computation~\cite{zhao2022polyhedral}.
 
-RAJA, and performance portability libraries more generally, cannot in many cases represent sparse computations at all, let alone in a performance portable way.
-This means that a scientific applications can use RAJA for parts of its implementation, but must rely on alternative approaches to sparse computation for others.
-It is desirable for performance portability libraries to support the description of a wider range of computations, and this dissertation lays the foundations for that support.
-Here, the scope is limited to supporting per-loop schedule changes and global data layout changes.
+While RAJA has limited support for representing sparse computations, they are generally not performance portable, especially when changing the format of the sparse data.
+RAJA's execution model requires sparse computations to be flattened to a single loop that iterates over all nonzeros. 
+For some computations, like the perfectly nested sparse matrix vector multiplication, this is acceptable.
+For others, like the imperfectly nested Gauss-Seidel iteration, flattening the loop nest is a challenge.
+This problem is exacerbated if a new data format is to be used, as the entire loop body must be rewritten.
+It is desirable to have a single interface for sparse computations that supports different sparse formats and maintains the multidimensional loop and data abstractions.
 
 \section{Summary of Contributions and Code Examples}
 
-This dissertation aims to strengthen the P3 library approach in three ways: support for cross-kernel schedule transformations, cross-kernel data transformations, and sparse computations.
-Each of these contributions add this support through an interface that reduce the labor requirements of their use while maintaining the performance improvements of the optimizations they provide.
+This dissertation aims to strengthen the performance portability library approach in three ways: support for cross-kernel schedule transformations, cross-kernel data transformations, and sparse computations.
 
-\todo{make sure to tell them what is important about each listing}
 In Chapter~\ref{chap:RAJALC}, I introduce RAJALC, which provides support for cross-kernel schedule transformations.
 Two challenges that arise here are the need for an interface for manipulating computations and the need for information about how the computations access their data.
 To solve these problems, I introduce two extensions to the RAJA library that are used throughout the dissertation.
@@ -379,11 +498,12 @@ tiled_64();
 \end{figure}
 
 In Chapter~\ref{chap:FormatDecisions}, I build on the kernel wrapper and symbolic evaluation extensions to introduce inter-kernel data layout transformations through the \FormatDecisions{} interface.
-The challenge here is balancing user control of the transformations applied with the ease of automated transformations.
+The first challenge here is providing user control over the transformations without sacrificing the benefits of automated transformation.
 To address this, the interface allows the programmer to succinctly specify the desired format for different pieces of data throughout a computation.
 Then, because I incorporate a runtime performance model into the system, it can identify potentially beneficial transformations in addition to those specified by the programmer.
 Overall, this creates an as-automated-as-desired system, built directly into the library.
-Additionally, I augment the interface for describing iteration spaces in RAJA to iteration spaces that are not hyper-rectangular.
+The second challenge is representing computations with triangular iteration spaces.
+I augment the interface for describing iteration spaces in RAJA to iteration spaces that are not hyper-rectangular.
 An example code using \FormatDecisions{} is shown in Listing~\ref{Intro:FormatDecisions3MM}.
 Like with RAJALC, much less code is required to implement layout changes.
 Instead of managing the reorganization of data themselves, the programmer simply registers the formats the Views should have for different computations and the system manages applying the transformations.
@@ -418,10 +538,19 @@ Finally, in Chapter~\ref{chap:SparseRAJA}, I develop prototype support for repre
 The two challenges for sparse computations are constructing the sparse iteration space and efficiently iterating through the sparse data.
 Using symbolic evaluation to gather the data access patterns in the computation, the prototype constructs a sparse iteration space from the dense-like specification provided by the programmer.
 Then, for iterating through sparse data, the system uses a software prefetching approach during kernel execution to reduce the computational complexity of data access.
-While the system is outperformed by a format-specialized implementation, I identify a number of opportunities for further optimization and argue that in terms of computational complexity, the sparse prototype can eventually achieve comparable performance.
-These optimizations mainly focus on the structures used to represent and traverse the iteration space, which rely on multiple levels of virtualization to meet iterator type requirements imposed by the RAJA execution model.
+Overall, this creates a programming interface that looks like dense code, but operates on sparse data.
 Listing~\ref{Intro:SparseRAJAMV} shows an implementation of sparse matrix vector multiplication using the prototype.
-Note that aside from the type of the View \verb.A. and the function used to create the kernel, the code looks exactly like it would for a dense matrix vector multiplication.
+While algorithm complexity suggests that performance could compare to format-specialized implementations, runtime overhead was significant.
+I identify sources of overhead and fundamental limitations to the approach.
+The overhead comes from two sources.
+First, the structures used to represent and traverse the sparse iteration space use virtualization to meet type requirements of the RAJA execution model, incurring devirtualization overhead.
+For perfectly nested loops, the traversal can be restructured to remove this overhead, but comes at the cost of the ability to express imperfectly nested loops.
+Second, the prefetching approach introduces expensive conditionals into the innermost loop.
+For loops with simple access patterns, specialized iterator types could bypass these conditionals.
+However, such an approach would require the code use only RAJA View types and could not support loops that do not traverse the data in order.
+I conclude that to efficiently support general sparse computations with dependences, more significant changes to the performance portability library interface will be needed.
+Overall, the existing abstractions are capable of supporting dense cross-loop schedule and data transformations and sparse format transformations for a limited subset of sparse codes.
+
 \begin{figure}
 \begin{lstlisting}[caption={Implementation of SpMV using the SparseRAJA prototype},label=Intro:SparseRAJAMV]
 DenseView<1> x(Nj);

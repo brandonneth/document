@@ -172,7 +172,7 @@ The access to \verb.A. resolves to a similar symbolic access object.
 Finally, the assignment operator is overloaded to mark the symbolic access to \verb.B. as a read and the access to \verb.A. as a write.
 After the lambda is done evaluating, the symbolic accesses are extracted from the symbolic iterator that was passed into the lambda, which maintains a list of all the accesses of which it was a part.
 
-Because \FormatDecisions{} utilizes this feature of RAJALC, it inherits its limitations.
+Because \FormatDecisions{} uses this feature of RAJALC, it inherits its limitations.
 Most important among them are the requirement that all accessed data is stored in Views and the prohibition of indirect accessing.
 These restrictions are only present when the programmer wishes to use the automated transformation selection system. 
 This means that a programmer can still use \FormatDecisions{} to do manual experimentation with layout transformations, an example of which can be found in Section~\ref{sec:miniQMC}.

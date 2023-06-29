@@ -31,28 +31,28 @@
 \vfill
 
 \MakeUppercase{\ttitle}\\ %Thesis Title in ALL CAPS
-\vspace{0.4in}
-by\\ \vspace{0.4in}
+\vspace{0.2in}
+by\\ \vspace{0.2in}
 {\authorname}\\ % Places author name as specified in preamble
-\vspace{0.6in}
+\vspace{0.4in}
 \HRule \\[0.1cm] % Horizontal line
 Copyright \textcopyright\space\authorname\space{\the\year}\\ % Copyright Date
 
-\vspace{0.4in}
+\vspace{0.2in}
 
 A Dissertation Submitted to the Faculty of the\\ % University required text
-\vspace{0.4in}
+\vspace{0.2in}
 \MakeUppercase{\deptname} \\  % Department name in Small Caps
-\vspace{0.4in}
+\vspace{0.2in}
 In Partial Fulfillment of the Requirements \\ \medskip % University required text
 For the Degree of \\  % University required text
-\vspace{0.4in}
+\vspace{0.2in}
 \MakeUppercase{\degreename} \\ % Thesis type
-\vspace{0.4in} 
+\vspace{0.2in} 
 In the Graduate College \\  % University required text
-\vspace{0.4in}
+\vspace{0.2in}
 \MakeUppercase{The \univname} \\ % University name in Small Caps
-\vspace{0.6in}
+\vspace{0.2in}
 %\normalsize
 {\the\year}\\[4cm] % date
 %\includegraphics{Logo} % University/department logo - uncomment to place it
@@ -241,8 +241,33 @@ This document allows you to type your acknowledgements to people, groups and org
 \MakeUppercase{Abstract}\\ \bigskip
 \end{center}
 
-The Thesis Abstract is written here (and usually kept to just this page). The page is kept centered vertically so can expand into the blank space above the title too\ldots
 
+High performance computing is an important tool in various domains, including climate modeling, drug discovery, and recently, generative AI\@.
+Application performance and developer productivity are important considerations when developing these codes.
+However, optimizing a program's performance for one machine can inadvertently harm its performance for another.
+With the ever-growing diversity of computing hardware, it has become more difficult to write code that performs well on multiple different machines, that is, to write code that is \textit{performance portable}.
+A similar phenomenon occurs with changes of input data and algorithm choice as well.
+Often, developers must maintain multiple versions of their application, one tuned for each system it will be used on.
+Performance portability libraries address this problem by separating the description of a computation from its optimization.
+Using these libraries, optimizations like tiling, parallelization, and data layout transformations can be quickly and portably applied.
+Unfortunately, they leave out important opportunities for optimizations that are applied across multiple loops.
+A programmer who wishes to improve data reuse through loop fusion or inter-loop layout changes cannot do so portably.
+Similarly, for codes using sparse data structures, the limited available abstractions require code to be format-dependent.
+Thus, the performance improvements of changing sparse formats come at the cost of rewriting entire kernels for the new format.
+This dissertation remedies these problems, introducing abstractions for cross-loop schedule and data transformations and format-independent abstractions for describing sparse computations.
+
+First, I introduce an interface for cross-kernel scheduling transformations through the RAJALC framework.
+The framework uses runtime symbolic evaluation to partially automate and ensure the correctness of the transformations.
+On average, this framework requires about a quarter as many code changes while achieving up to 98\% of the performance improvement of a hand-implemented transformation.
+Second, I build on the symbolic evaluation capabilities to support as-automated-as-desired format transformations.
+Further, I augment RAJA's iteration space capabilities to support triangular iteration spaces.
+As with the schedule transformations, performance improvement is achieved with significantly fewer code changes.
+Finally, I develop prototype support for the format-independent description of sparse computations.
+Because the description of the computation is independent of the sparse format, changing sparse formats becomes as simple as with dense.
+The hypothesis was that because the approach to separating the sparse format from the computation description has the same algorithmic complexity as a hand-written sparse loop nest, the performance would be comparable.
+However, evaluation shows that there is significant runtime overhead due to the implementation needing to perform checks in the innermost loops and other constant time work.
+I conclude that more significant changes to performance portability library interfaces will be needed to support general sparse computations.
+Still, the current abstractions are capable of supporting cross-loop scheduling and data transformations for dense codes efficiently. 
 
 
 

@@ -17,34 +17,172 @@ To efficiently traversal of the sparse structures, I incorporate an expected nex
 
 }
 
+Sparse computations are important.
 
-\section{Sparse Computations and Data}
+We need to be able to change sparse data formats, and changing sparse formats in handwritten code is more difficult than with dense.
 
-Sparse computations have long been a bottleneck for high performance computing applications. 
+There isn't a performance portable way in RAJA to change sparse formats.
+
+Ideally, performance portable format changes would enable computations to access data using the same interface regardless of data format.
+
+RAJA's existing multidimensional data interface is a convenient and intuitive target.
+
+Conforming to this interface presents two challenges: traversing the iteration space and traversing the data.
+
+Iteration space traversal is enabled by introducing new \verb.SparseSegment. abstractions.
+Data traversal is enabled by incorporating incremental updates into the View's access function.
+
+Algorithmic complexity suggests that this approach could compete with existing support.
+Prototype performance evaluation suggests that the increased constant factor incurred by runtime overhead is too expensive, causing a $2-3\times$ slowdown.
+
+The two largest sources of runtime overhead are extracting the iterator values from the segments (18\% of kernel execution) and the conditionals used in the incremental updates (8\% of kernel execution).
+
+The key to reducing the runtime overhead is template specialization, but more specialization comes at the cost of the expressiveness and portability of the interface.
+
+Extracting the iterator values could be specialized using RAJA's existing \verb.IndexSet. abstraction.
+However, this sacrifices multi-dimensional loop abstractions and cannot support imperfectly nested loops.
+
+Removing the conditionals in the incremental updates is possible using special iterator types.
+This is only possible when the data is certain to be traversed in a specified order.
+
+\todo{unclear if i've implemented the possible improvements}
+\todo{paragraph that indicates what will be in each section}
+
+\section{Sparse Computations And Data}
+
+
+%Sparse computations are important.
+Sparse computations --- those that operate on data where ``there is advantage to be taken of the percentage or distribution of zero elements''~\cite{duff1977survey} --- have long been a bottleneck for high performance computing applications. 
 Even as early as 1971, scientists lamented the difficulty of computing with sparse data~\cite{willoughby1971sparse}.
-Fifty years later, although the application domains have changed, programming sparse applications is still something of an open problem.
-Specifically, researchers continue to develop new approaches to generating efficient implementations from succinct descriptions.
-While sparse computations are still foundational to physics simulations, new domains have emerged, including prediction and recommendation/review systems.
+More than fifty years later, while new application domains have garnered attention~\cite{he2016fusing,zhao2018bridging,zhu2019sparse}, programming sparse applications is still a challenge.
+Many of these difficulties emerge from the variety of compression strategies used to avoid storing and computing on zero elements.
 
-\subsection{What is a Sparse Computation? 2 Examples.}
 
 \begin{figure*}
   \centering
   \begin{subfigure}{0.45\textwidth}
     \includegraphics[page=1,width=\textwidth]{FormatDiagram.pdf}
-    \caption{Dense representation of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:Dense}
+    \caption{Dense representation of data. All entries are stored, including zeros.}\label{FormatDiagram:Dense}
   \end{subfigure}
   \begin{subfigure}{0.45\textwidth}
     \includegraphics[page=2,width=0.95\textwidth]{FormatDiagram.pdf}
-    \caption{Coordinate storage representation of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:COO}
+    \caption{Coordinate storage (COO) representation of data. The nonzero entries and their corresponding index values are stored. Here, the entries are sorted by row index then by column index.}\label{FormatDiagram:COO}
   \end{subfigure}
 
   \begin{subfigure}[c]{0.45\textwidth}
     \includegraphics[page=3,width=0.95\textwidth]{FormatDiagram.pdf}
-    \caption{Compressed sparse row representation of data. Nonzero entries are colored by their row value.}\label{FormatDiagram:CSR}
+    \caption{Compressed sparse row (CSR) representation of data. Instead of storing duplicate row values, the row array is compressed to the offsets in the column and value arrays where each row starts.}\label{FormatDiagram:CSR}
   \end{subfigure}
-\caption{Dense, COO, and CSR storage representations of the same data.}\label{FormatDiagram}
+\caption{Dense, COO, and CSR storage representations of the same data.  Nonzero entries are colored by their row value.}\label{FormatDiagram}
 \end{figure*}
+
+%We need to be able to change sparse data formats,
+Like with dense codes, it is often desirable to change the sparse data format a computation uses.
+Because of their compression strategies, sparse data structures usually do not support constant-time random access.
+Instead, format and schedule are coordinated so that the sparse data is traversed in order, replacing random access with incremental updates.
+This means that in addition to improving memory performance, a good choice of format can improve the algorithmic complexity of a program.
+Changes in algorithm, schedule, machine, and input data all influence which format is best (see Section~\ref{sec:SparseFormats}).
+
+
+%and changing sparse formats in handwritten code is more difficult than with dense.
+However, more significant performance improvement comes at the cost of more significant refactoring.
+With handwritten codes, changing the sparse format used in a loop nest can involve changes to every single line of code for the loop nest.
+An example of this phenomenon is shown in Listing~\ref{DenseAndSparseMV}, which contains implementations of sparse matrix vector multiplication (SpMV) for three different formats.
+This effect, already present with a simple kernel and commonplace formats, is amplified as the complexity of the loop nest and format increase.
+Part of the problem here is that with dense data, no matter the layout, there is a closed form, $O(1)$ complexity function for calculating the location of any element.
+With sparse formats, there is no constant-time random access.
+Instead, the computation must be reorganized to stream through the sparse data, even if it means indirect accesses in dense data.
+Because the computation is written around streaming through sparse data, most of the code ends up implementing the traversal of the nonzeros rather than the computation the programmer wants to express.
+
+\begin{figure}
+\begin{lstlisting}[caption={Matrix vector multiply routines for matrices in different formats.},label=DenseAndSparseMV]  
+//Dense
+void dense_matrix_vector_multiply(View2D A, View1D x, View1D y) {
+  int Ni = A.num_rows();
+  int Nj = A.num_cols();
+  for(int i = 0; i < Ni; i++) {
+    for (int j = 0; j < Nj; j++) {
+      y(i) += A(i,j) * x(j);
+    }
+  }
+}
+
+//Coordinate storage
+void COO_matrix_vector_multiply(COOView2D A, View1D x, View1D y) {
+  int nnz = A.numNonZeros();
+  for(int idx = 0; idx < nnz; idx++) {
+    int i = A.rows(idx);
+    int j = A.cols(idx);
+    y(i) += A.vals(idx) * x(j);
+  }
+}
+
+//Compressed Sparse Row
+void CSR_matrix_vector_multiply(CSRView2D A, View1D x, View1D y) {
+  int Ni = A.numRows();
+  for(int i = 0; i < Ni; i++) {
+    startIndex = A.rowptr(i);
+    endIndex = A.rowptr(i+1);
+    for(int j = startIndex; j < endIndex; j++) {
+      y(i) += A.vals(j) * x(A.col(j));
+    }
+  }
+}
+\end{lstlisting}
+\end{figure}
+
+  
+%There isn't a performance portable way in RAJA to change sparse formats.
+In RAJA, while there is some support for representing sparse computations, there is not a performance portable way to change sparse formats.
+The \verb.IndexSet. abstraction can be used to iterate over the coordinates of a sparse structures nonzero entries, but requires the loop nest to be flattened to a one-dimensional traversal.
+For a perfectly nested, reorderable computation like SpMV, this is a manageable requirement.
+For a computation with dependences and imperfect nesting, like Gauss-Seidel iterative solve, this requirement becomes much more troublesome.
+Even after wrangling a computation into this representation, changing the format of the sparse data can mean modifying large swaths of code, both within the computation itself and in constructing its iteration space.
+
+%Ideally, performance portable sparse format changes would enable computations to access data using the same interface regardless of data format.
+%RAJA's existing multidimensional data interface is a convenient and intuitive target.
+Ideally, performance portable sparse format changes would enable computations to access data using the same interface regardless of data format.
+RAJA's existing multidimensional data interface is a convenient and intuitive target.
+With this approach, the description of a sparse computation would look quite similar to a dense version.
+In a similar vein, RAJA already contains an interface for representing a computation's schedule.
+If support for sparse computations could be built using these existing abstractions, it would create significant programmability benefits.
+The computation would be sparse, but it would look as if it were dense.
+ 
+%Conforming to this interface presents two challenges: traversing the iteration space and traversing the data.
+This chapter details the design decisions and lessons learned while developing a prototype of this approach.
+Conforming to the existing interface of RAJA computations presents two challenges: constructing the iteration space and traversing the sparse data.
+Iteration space construction is enabled by introducing new \verb.SparseSegment. abstractions.
+Data traversal is enabled by incorporating incremental updates into the sparse View's access function.
+These solutions were developed based on the need for flexible but performant interfaces.
+
+Algorithmic complexity suggests that implementations using this approach could compete with implementations specialized for specific formats.
+However, evaluation disproves this hypothesis, showing the increased constant factor incurred by runtime overhead is too expensive, causing a $1.5-2\times$ slowdown.
+More aggressive optimization of the approach would come at the cost of restricting the class of sparse computations the approach could represent.
+I conclude that RAJA's approach to decoupling data, iteration space, and schedule is sufficient for dense codes, but it cannot represent the more significant coupling of these elements present in sparse codes.
+
+The rest of this chapter proceeds as follows.
+Section~\ref{sec:SparseFormats} reviews the wide variety of sparse formats that have been developed and motivates the need to have the one codebase support multiple sparse formats.
+Section~\ref{sec:IndexSets} reviews RAJA's existing capabilities for representing sparse computations and their limitations.
+Section~\ref{sec:SparseRAJA} describes the design and implementation of a prototype extension to support format-independent computation descriptions in RAJA.
+Section~\ref{sec:SparseEval} evaluates the prototype, and Section~\ref{sec:SparseDiscussion} discusses lessons learned and concludes.
+
+
+
+\section{A Preponderance of Sparse Data Formats}\label{sec:SparseFormats}
+
+\section{Writing Sparse Codes in RAJA}\label{sec:IndexSets}
+
+\section{Prototype Design and Implementation}\label{sec:SparseRAJA}
+
+\section{Evaluation}\label{sec:SparseEval}
+
+\section{Discussion and Conclusion}\label{sec:SparseDiscussion}
+
+
+\section{Sparse Computations and Data}
+
+\subsection{What is a Sparse Computation? 2 Examples.}
+
 ``Sparse'' describes data, and through it, everything else.
 A simple definition for sparse data is data where the nonzero density is less than 0.1 or conversely, where more than 90\% of the entries are zero.
 Other definitions are slightly less clear cut but more useful, defining a sparse matrix as one where there is advantage to be taken of the percentage or distribution of zero elements~\cite{duff1977survey}.
@@ -125,43 +263,6 @@ This section presents versions of matrix vector multiplication to illustrate the
 Then, it argues from a computational complexity standpoint that with sufficient optimization, this approach can provide comparable performance to a hand-implemented version of the code.
 
 \subsection{Matrix Vector Multiply, Dense and Sparse}
-\begin{figure}
-\begin{lstlisting}[caption={Matrix vector multiply routines for matrices in different formats.},label=DenseAndSparseMV]  
-//Dense
-void dense_matrix_vector_multiply(View2D A, View1D x, View1D y) {
-  int Ni = A.num_rows();
-  int Nj = A.num_cols();
-  for(int i = 0; i < Ni; i++) {
-    for (int j = 0; j < Nj; j++) {
-      y(i) += A(i,j) * x(j);
-    }
-  }
-}
-
-//Coordinate storage
-void COO_matrix_vector_multiply(COOView2D A, View1D x, View1D y) {
-  int nnz = A.numNonZeros();
-  for(int idx = 0; idx < nnz; idx++) {
-    int i = A.rows(idx);
-    int j = A.cols(idx);
-    y(i) += A.vals(idx) * x(j);
-  }
-}
-
-//Compressed Sparse Row
-void CSR_matrix_vector_multiply(CSRView2D A, View1D x, View1D y) {
-  int Ni = A.numRows();
-  for(int i = 0; i < Ni; i++) {
-    startIndex = A.rowptr(i);
-    endIndex = A.rowptr(i+1);
-    for(int j = startIndex; j < endIndex; j++) {
-      y(i) += A.vals(j) * x(A.col(j));
-    }
-  }
-}
-}
-\end{lstlisting}
-\end{figure}
 
 Listing~\ref{DenseAndSparseMV} shows C-like implementations of the SpMV kernel using dense and sparse data formats.
 The first implementation shows the computation written for a dense matrix.
