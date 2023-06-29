@@ -170,6 +170,56 @@ Section~\ref{sec:SparseEval} evaluates the prototype, and Section~\ref{sec:Spars
 
 \section{A Preponderance of Sparse Data Formats}\label{sec:SparseFormats}
 
+WHAT IS THE MAIN POINT???
+
+There are lots and lots of sparse formats.
+Sparse formats vary in their performance for different algorithms, machines, schedules, and data characteristics.
+Handwritten codes require lots of refactoring to change format.
+
+In the world of dense computations, there are not many popular data formats beyond the permuted linear layouts discussed in Chapter~\ref{chap:FormatDecisions}. 
+In fact, the full gamut can be covered in one paper: linear layouts, tiled layouts, and Morton order layouts~\cite{chatterjee1999recursive}.
+Each of these classes of layouts has a constant-time mapping function from the data space to physical memory, based on linear combinations for linear and tiled layouts and bit interleavings for Morton order layouts.
+With the ever-growing list of sparse data formats, this is not the case.
+
+
+COO
+CSR
+CSC
+DIAG
+JAD
+ELL
+DCSR
+TCSR
+HiCOO
+CSF
+F-COO
+CSB
+
+
+
+\subsection{General-Purpose Sparse Formats}
+
+
+\subsection{Algorithm-Specialized Sparse Formats}
+DIAG
+
+JAD
+
+ELL
+
+\subsection{Architecture-Specialized Sparse Formats}
+GPUs
+
+FPGAs
+
+Distributed Computing
+
+
+
+
+\subsection{Distribution-Specialized Sparse Formats}
+DCSR,TCSR
+
 \section{Writing Sparse Codes in RAJA}\label{sec:IndexSets}
 
 \section{Prototype Design and Implementation}\label{sec:SparseRAJA}
