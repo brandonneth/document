@@ -103,7 +103,7 @@ escapeinside={<@}{@>}
 \usepackage{xspace}
 \newcommand{\FormatDecisions}[0]{{\textsc{FormatDecisions}}}
 \newcommand{\su}[1]{{#1$\times$}}
-\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}{../sparseEval}{./graphics/SparseRAJA}}
+\graphicspath{{./graphics/}{.}{./graphics/FormatDecisions}{./graphics/RAJALC}{../sparseEval}{./graphics/SparseRAJA}{../ScoreValidity}}
 
 \usepackage[subtle]{savetrees}
 \vbadness=18000
@@ -118,7 +118,7 @@ escapeinside={<@}{@>}
 
 \usepackage{makecell}
 
-\thesistitle{Type the title of your thesis here} % Your thesis title, this is used in the title, committee approval and abstract pages, print it elsewhere with \ttitle
+\thesistitle{Program Transformations and Sparse Computations in Performance Portability Libraries} % Your thesis title, this is used in the title, committee approval and abstract pages, print it elsewhere with \ttitle
 
 \chair{Michelle Mills Strout} % Your dissertation chair's name, this is used in the title, abstract and committee approval pages, print it elsewhere with \chairname
 
@@ -126,7 +126,7 @@ escapeinside={<@}{@>}
 
 \examiner{Type the name of your examiner here} % Your examiner's name, this is not currently used anywhere in the template, print it elsewhere with \examname
 
-\degree{Type the name of your degree here} % Your degree name, this is used in the title page and abstract, print it elsewhere with \degreename
+\degree{Doctorate of Philosophy in Computer Science} % Your degree name, this is used in the title page and abstract, print it elsewhere with \degreename
 
 \author{Brandon Neth} % Your name, this is used in the title page and abstract, print it elsewhere with \authorname
 
@@ -140,15 +140,15 @@ escapeinside={<@}{@>}
 
 \department{Department of Computer Science} % Your department's name and URL, this is used in the title page and abstract, print it elsewhere with \deptname
 
-\facultyA{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. Do not use this for your COMMITTEE CHAIR This is used in the committee approval page, print it elsewhere with \facnameA
+\facultyA{David Lowenthal} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This may optionally be added to the committee approval page when number of committee members requires it, print it elsewhere with \facnameD
 
-\facultyB{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This is used in the committee approval page, print it elsewhere with \facnameB
+\facultyB{Laura Condon} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. Do not use this for your COMMITTEE CHAIR This is used in the committee approval page, print it elsewhere with \facnameA
 
-\facultyC{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This may optionally be added to the committee approval page when number of committee members requires it, print it elsewhere with \facnameC
+\facultyC{Bronis R. de Supinski} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This is used in the committee approval page, print it elsewhere with \facnameB
 
-\facultyD{Type the name of your committee member here} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This may optionally be added to the committee approval page when number of committee members requires it, print it elsewhere with \facnameD
+\facultyD{Saumya Debray} % Your first faculty member's name and URL(can be added between green curly brackets before the member's name. This may optionally be added to the committee approval page when number of committee members requires it, print it elsewhere with \facnameC
 
-\defense{Type defense date here} % This should have the long date format of your scheduled defense, print it elsewhere with \defensedate
+\defense{July 28th, 2023} % This should have the long date format of your scheduled defense, print it elsewhere with \defensedate
 
 \AtBeginDocument{
 \hypersetup{pdftitle=\ttitle} % Set the PDF's title to your title
@@ -159,27 +159,18 @@ escapeinside={<@}{@>}
 
 
 \begin{document}
-
 %\include{FrontMatter.tex}
+
 %\include{Introduction.tex}
 
-%\include{RAJALC.tex}
+%%\include{RAJALC.tex}
 
-%\include{FormatDecisions.tex}
+\include{FormatDecisions.tex}
 
-%\include{SparseHistory.tex}
-\include{SparseRAJA.tex}
+%\include{SparseRAJA.tex}
 
-
-\include{Conclusion.tex}
-
-
-
+%\include{Conclusion.tex}
 
 \bibliographystyle{abbrv}
 \bibliography{dissertation.bib}
-
-
-
-
 \end{document}

@@ -29,12 +29,12 @@ These include loop schedule transformations --- like loop interchange, tiling, v
 While powerful, this approach focuses on tuning each loop independently, leaving out opportunities for optimizations that are applied across loops.
 A programmer who wishes to apply valuable cross-loop optimizations like loop fusion~\cite{mckinley1996improving}, overlapped tiling~\cite{bertolacci2019using,zhou2012hierarchical,CathieSC14}, or inter-loop layout changes~\cite{kennedy1995automatic,kennedy1998automatic} cannot do so without breaking the abstractions of the performance portability library.
 This sacrifice of portability for performance is also present for a programmer who wishes to express parts of a computation that work with sparse data.
-This dissertation seeks to remedy these problems, introducing abstractions to support cross-loop schedule and data transformations and laying the foundation for native support for sparse computations within the performance portability library, RAJA\@.
-This chapter introduces the programming model of the RAJA library, the limitations of RAJA's transformation scope, and the contributions made in the subsequent chapters. 
+This dissertation seeks to remedy these problems, introducing abstractions to support cross-loop schedule and data transformations and laying the foundation for native support for sparse computations within a representative performance portability library, RAJA\@.
+This chapter introduces the programming model of the RAJA library, the limitations of PPLs, and RAJA in particular, and the contributions made in the subsequent chapters. 
 
 \section{Programming with Performance Portability Libraries}
 
-Performance portable libraries are driven by the need to create modularized and easily-tuned code.
+Performance portable libraries (PPLs) are driven by the need to create modularized and easily-tuned code.
 This is achieved through a process of decomposing the computation into separable parts.
 While the specifics of this decomposition differ across libraries, they share key components.
 Broadly, these components appear as data abstractions and loop abstractions.
@@ -51,7 +51,7 @@ for(int i = 0; i < N; i++) {
   B[i] = b;
 }
 
-// Fill with starting conditions (omitted here and in RAJA version)
+// Fill with starting conditions, will depend on the problem
 
 // Execute!
 for(int i = 1; i < N-1; i++) {
@@ -62,12 +62,12 @@ for(int i = 1; i < N-1; i++) {
 \end{lstlisting}
 \end{figure}
 
-Here, I illustrate these abstractions in RAJA using a 5-point stencil computation (see Listings~\ref{stencilRAJA},~\ref{stencilData} and~\ref{stencilSchedule}).
+Here, I illustrate these abstractions in RAJA using a 5-point stencil computation (see Listings~\ref{stencilRAJA},~\ref{stencilRAJADiff} and~\ref{stencilSchedule}).
 Stencil computations are an important class of computation that often appear in image processing and the solution of differential equations.
 The example computation uses two $N \times M$ arrays \verb.A. and \verb.B..
 A reference implementation in C++ is shown in Listing~\ref{stencilCpp}.
-The RAJA implementation is longer than the standard C++, but this is not a problem.
-Decomposing a computation into interchangeable parts brings benefits that greatly outweigh the cost of a few extra lines of code.
+The RAJA implementation in Listing~\ref{stencilRAJA} is longer than the standard C++, but this is not a problem.
+Decomposing a computation into individually tunable parts brings benefits that greatly outweigh the cost of a few extra lines of code.
 Two of those benefits, per-loop schedule changes and global data layout changes, are the focus of this section.
 
 \begin{figure}
@@ -177,8 +177,9 @@ for(int i = 1; i < N-1; i++) {
 }
 \end{lstlisting}
 \end{figure}
-First, we turn to RAJA's abstraction for multidimensional data.
-Then, to the layout transformations it enables.
+
+First, I describe the abstractions in performance portability libraries for multidimensional data.
+Then, the layout transformations, like switching between row- and column-major storage, they enable.
 Multidimensional data is exceedingly common in simulation codes.
 However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
 Thus, any multi-dimensional representation must be mapped to the 1-dimensional nature of the hardware.
@@ -190,7 +191,6 @@ With these layouts, the strips of one-dimensional data are either the columns or
 When tuning an application for a new system, changing the layout of data in memory can have large performance implications.
 These differences are especially relevant between different processor types, where a data layout that performs well on a CPU is not best for a GPU\@.
 It can also impact performance between two CPUs because of threading and cache behaviors~\cite{trott2021kokkos}.
-
 
 Traditional approaches to representing multi-dimensional data, such as the array of pointers or the vector of vectors used in Listing~\ref{stencilCpp} do not admit an easy data layout change.
 This is due to the high degree of coupling between the layout and the method of data access. 
@@ -206,7 +206,7 @@ In a complicated loop nest making hundreds of data accesses, all using different
 And of course, once the transformation has been applied and the new bugs squashed, it may turn out that a layout change had no effect, or even a negative one.
 
 Called a View in RAJA and Kokkos and an Array in YAKL, multidimensional data structures are a key abstraction through which performance portability libraries surface portability controls to the programmer.
-RAJA's View abstraction is shown in action in the first half of Listing~\ref{stencilRAJA}, and in Listing~\ref{stencilDataDiff}, which shows the code changes necessary to switch layouts.
+RAJA's View abstraction is shown in action in the first half of Listing~\ref{stencilRAJA}, and in Listing~\ref{stencilRAJADiff}, which shows the code changes necessary to switch layouts.
 Because data layout can be changed for the entire program just by changing how the data is declared or initialized, global layout transformations are brought back into the programmer's thought-loop.
 Instead of taking hours, the question ``How would this perform with a different data layout?'' is answered in minutes.
 These easy changes are made possible by making the layout of the data an explicit parameter to the multi-dimensional data abstractions.
@@ -248,7 +248,7 @@ using ParallelTiled = KernelPolicy<
 \end{figure}
 
 \begin{figure}
-\begin{lstlisting}[caption={Hand-changed loop schedules for C++ 5-point stencil computation.}, label={stencilScheduleCpp}]
+\begin{lstlisting}[caption={Hand-changed loop schedules for C++ 5-point stencil computation. They are all shown in one figure, but in practice only one would appear within a code at a time.}, label={stencilScheduleCpp}]
 // OpenMP with Vectorization
 #pragma omp parallel for
 for(int i = 1; i < N-1; i++) {
@@ -285,7 +285,6 @@ for(int iTile = 0; iTile * 64 < N-1; iTile++) {
 \end{figure}
 
 As with their data abstractions, performance portability libraries share an approach to their abstractions for specifying and executing loop nests.
-what to do, 
 At a high level, a loop nest is decomposed into loop bodies describing the operation to do, an iteration space describing the values to do it for, and scheduling information describing how to order and distribute the iterations among the different processing elements.
 This process is shown in RAJA for the 5-point stencil computation in the second half of Listing~\ref{stencilRAJA}.
 
@@ -301,7 +300,9 @@ This function creates a range from the first argument to the second.
 Then, the two dimension are grouped into the iteration space tuple.
 
 Last is the schedule for the computation.
-In RAJA, these comes as the kernel policy type.
+In Kokkos, different abstractions are provided for loops with different schedules, including fully parallel loops, reductions, and scans.
+In YAKL, a similar approach is used, with the additional of hierarchical parallelism through the \verb.parallel_outer. and \verb.parallel_inner. constructs.
+In RAJA, schedules are written using the kernel policy type.
 In Listing~\ref{stencilRAJA}, the policy type is \verb.SequentialPolicy..
 This policy corresponds to a canonical, sequential, 2-dimensional loop nest.
 Changing parts of the kernel policy change the execution schedule.  %good
@@ -420,14 +421,14 @@ This has much more favorable cache behavior than the computation of $E$, where a
 Performance can be improved by changing the layout of $A$ between the two loop nests, ensuring that both have favorable access patterns.
 However, applying such a transformation by hand is, as discussed above, time consuming and error prone. 
 An example of such a manual implementation of this transformation is shown in Listing~\ref{FormatChangeByHand}.
-While RAJA does support changing the layout of a View at a global scope, it does not support making these changes between loop nests. 
+While PPLs do support changing the layout of a View at a global scope, they do not support making these changes between loop nests. 
 
 Early work on the problem of automatically selecting data layouts were done in the High Performance Fortran and D programming languages using graph theoretic formulations, specifically for distributed computing systems~\cite{kennedy1995automatic,kennedy1998automatic}.
 Later work reformulated the decision problem as constraint networks~\cite{chen2005constraint}.
 With the rise of multicore and vector processors, new approaches to transformations were developed~\cite{lu2009data,henretty2011data,zhang2011optimizing}.
 Jaeger and Barthou developed an automated approach to transformation selection for stencil computations on GPUs~\cite{jaeger2012automatic}.
 More recently, Kronawitter et al incorporated layout transformations into the ExaStencil DSL, providing a balance of user control and automation~\cite{kronawitter2018automatic}.
-Because these works have all been parts of restructuring compilers or domain specific languages, they cannot be used directly to transform RAJA codes.
+Because these works have all been parts of restructuring compilers or domain specific languages, they cannot be used directly to transform codes written with PPLs.
 
 \subsection{Sparse Computations}
 
@@ -450,8 +451,8 @@ By restricting the computation space to tensor algebra expressions, their approa
 Finally, the sparse polyhedral framework~\cite{strout2016approach} allows for a variety of composable optimizing transformations on sparse codes~~\cite{ahmad2017optimizing}.
 Recent work has enabled the synthesis of transformations among different formats~\cite{popoola2023code}, and a code description that decouples the format from the computation~\cite{zhao2022polyhedral}.
 
-While RAJA has limited support for representing sparse computations, they are generally not performance portable, especially when changing the format of the sparse data.
-RAJA's execution model requires sparse computations to be flattened to a single loop that iterates over all nonzeros. 
+While PPLs give limited support for representing sparse computations, they are generally not performance portable, especially when changing the format of the sparse data.
+The execution model requires sparse computations to be flattened to a single loop that iterates over all nonzeros. 
 For some computations, like the perfectly nested sparse matrix vector multiplication, this is acceptable.
 For others, like the imperfectly nested Gauss-Seidel iteration, flattening the loop nest is a challenge.
 This problem is exacerbated if a new data format is to be used, as the entire loop body must be rewritten.
@@ -460,6 +461,9 @@ It is desirable to have a single interface for sparse computations that supports
 \section{Summary of Contributions and Code Examples}
 
 This dissertation aims to strengthen the performance portability library approach in three ways: support for cross-kernel schedule transformations, cross-kernel data transformations, and sparse computations.
+I develop these capabilities within a representative performance portability library, RAJA\@, so many of the challenges are specific to RAJA's programming model.
+Using similar approaches in other PPLs would present different challenges in implementation, but the overall strategy would likely be similar.
+I selected RAJA for pragmatic reasons, but also because it has a wider range of scheduling constructs than Kokkos or YAKL\@.
 
 In Chapter~\ref{chap:RAJALC}, I introduce RAJALC, which provides support for cross-kernel schedule transformations.
 Two challenges that arise here are the need for an interface for manipulating computations and the need for information about how the computations access their data.
@@ -578,3 +582,5 @@ auto knl = make_sparse_kernel<POLICY>(dense_segs, A, lam);
 knl();
 \end{lstlisting}
 \end{figure}
+
+The code developed as part of this dissertation can be found at github.com/brandonneth/RAJA on branches \verb.loopchain., \verb.formatdecisions., and \verb.sparseRAJA. for chapters 2, 3, and 4, respectively.

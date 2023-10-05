@@ -1,52 +1,50 @@
 \chapter{Conclusion}\label{chap:Conclusion}
 
-\section{Limitations}
+Most of software engineering produces instruments of production.
+Like a freshly manufactured hammer, these products are used to produce.
+In especially self-referential cases, software engineering results in products themselves used for software engineering.
+Such products, including the languages and libraries used by programmers every day, are valuable because they increase labor productivity, the same quality faster or improved quality at the same rate.
 
-\subsection{Conversion Across Format Category}
-One limitation to this approach is the space of possible formats that it can support. 
-While it would be desirable to convert data to blocked layouts (for tiling) or cache oblivious layouts (like Z order), the structure of the View and Layout types in RAJA limit format conversion to strided layouts. 
-Because the type of the layout is a template parameter to the View type, all layouts that a View might use in a computation must be the same type. 
-This permits permuting linear orderings because the permutation of the dimensions are not part of the Layout type declaration. 
-However, other layouts would have to be implemented as new types. 
-This means that while it would be possible to change from one blocked layout to another blocked layout at runtime, it is not possible to change from a linear layout to a blocked layout, or a blocked layout to a linear one.
+Performance portability libraries are an example of this.
+In their domain, high performance computing, quality is often defined in terms the size of a solvable problem and the speed and accuracy of its solution.
+The problem PPLs solve arises when one code must run performantly on multiple systems. 
+The abstractions these libraries surface allow the programmer to tune programs for new machines without rewriting large portions of code.
 
-This limitation could technically be overcome using virtualization through a generic Layout base type. 
-However, with this approach, each data access would require a table lookup to resolve the virtualization. 
-While an  individual lookup is quick, the performance implications of adding such a lookup for the highest frequency methods in a program are too costly.
-\todo{I have some preliminary results showing this, are they worth including somewhere?}
+This dissertation has expanded this support from per-loop schedule transformations and global data transformations to include inter-loop schedule and data transformations, using the RAJA library as a target.
+Furthermore, it contributes a case study in supporting format-independent sparse computations and identifies modifications the library would need to make to make such support feasible.
 
-An additional limitation to the use of cache-oblivious layouts becomes clear when considering how these layouts are most often used. 
-Cache-oblivious layouts are never used alone. 
-Instead, they are combined with schedule transformations that implement traditionally iterative algorithms in a recursive manner. 
-While such transformations may technically be possible in RAJA, they are beyond the scope of this dissertation.
+Chapter~\ref{chap:RAJALC} introduced support for schedule optimizations across loops through the RAJALC framework.
+These transformations improve application performance by improving data reuse between parts of a computation.
+I developed user-guided, partially automated support for two key transformations: loop fusion and overlapped tiling.
+In addition to reducing the code changes required to implement the transformations, it also includes mechanisms to ensure the safety of the transformations.
+Using symbolic evaluation, RAJALC ensures transformation does not affect the correctness of a program at runtime, and defaults to the untransformed code in the case where it finds a potential safety problem.
+Schedule transformations written with RAJALC reduced the necessary code changes by around 75\% while maintaining between 95 and 98\% of the performance improvements compared to hand-implemented transformations.
 
-\section{Future Directions}
+A similar approach could be used for other cross-kernel schedule optimizations like diamond tiling and wavefront parallelization. 
+This would be aided by abstractions to introduce unrolling or kernel repetition for scheduling across iterations of an outer time loop.
 
-\begin{itemize}
-  \item Symbolic evaluation support for limited indirect accesses
-  \item Symbolic evaluation support for conditionals
-  \item Integration of RAJALC with \FormatDecisions{} to combine schedule and data transformations
-  \item Additional sparse formats, CSR, CSC, Blocked CSR
-  \item SoA-AoS layout transformations
-  \item Implementing this work in other libraries: Kokkos, YAKL, possibly even Hypre and other solver libraries
-  \item Using symbolic evaluation to automatically identify candidate kernels for offloading
-  \item Automatic tuning of transformation parameters like overlapped tile size.
-\end{itemize}
+Chapter~\ref{chap:FormatDecisions} introduced similar support for changing data layouts between loops.
+These transformations improve performance by organizing data in ways that facilitate streaming accesses.
+In the \FormatDecisions{} API, automated modeling supplements user-provided transformations.
+Runtime microbenchmarking and access patterns derived from runtime symbolic evaluation guide the model.
+The interface enables the performance improvement of hand-implemented data layout transformations with a fraction of the code changes.
 
+One future avenue of research could explore extending the possible layouts beyond the currently support strided layouts to morton order layouts or tiled layouts.
+Templated loop body functions would be helpful here to reduce data access overhead.
+Another avenue for research could, just using the existing strided layout support, integrate the schedule transformations of RAJALC with temporary storage optimizations.
+This would need to leverage 0-stride View dimensions.
 
-We conclude with three avenues for future work.
-Here, we introduced support for format conversions among the space of dense, rectilinear permutation formats
-\footnote{The authors have been unable to find an existing name for this space of formats. We use \enquote{linear} to distinguish from orderings that do not map linear threads of elements to consecutive memory, such as Z-orders or Morton orders. We use \enquote{permutation} to distinguish from the space's subset of lexicographic and colexicographic orders.}. 
-One avenue of future work would examine alternative dense formats, including Z-orders, Morton orders, tiled data formats, and SOA-AOS formats.
-This would require interface modifications to allow the specification of these orderings and implementation modifications to support those formats in RAJA.
-Similarly, another avenue of future work would examine extending this approach to sparse data and computations. 
-%While this would require more significant modifications to the RAJA library to support the specification of sparse computations, such an approach could build on the symbolic iteration space description support introduced in Section~\ref{sec:SymbolicSegment}. 
+Finally, Chapter~\ref{chap:SparseRAJA} examined the possibility of support for format-independent sparse computation using RAJA's existing abstractions.
+The prototype interface enabled the intuitive specification of sparse computations, but runtime overhead from the new components was ultimately too significant, largely caused by conditionals introduced into the innermost loop.
+While the decoupling of iteration space, schedule, and data access in performance portability libraries is well-suited for dense codes, it fails to capture the higher degree of connection between these elements in sparse codes.
 
-Beyond expanding the space of data formats the system can support, another direction for future research would examine support for accelerators like GPUs and FPGAs.
-Compared to CPU computing, programming systems for accelerators expect the programmer to take more responsibility for managing data movement.
-The \FormatDecisions{} interface could be extended to allow users to mark kernels for offloading while the underlying symbolic evaluation could be used to ensure all necessary data is accessible to the accelerator in a format that is performant for that system. 
+Future research will need to consider more significant modifications to the programming model to support the higher degree of coupling.
+For tensor expressions, the approach of the tensor algebra compiler~\cite{kjolstad2017tensor} shows promise.
+However, generating sufficiently performant code with template specialization presents a challenge, as TACO generates and optimizes an AST, then generates and dynamically links to the resulting computation.
+The project's abstractions for different possible sparse dimensions~\cite{chou2018format} would be better suited to the template metaprogramming paradigm of PPLs.
 
-Finally, \FormatDecisions{} could be integrated with the loop schedule transformation framework of RAJALC. 
-This would enable the simultaneous optimization of both the schedule and the data layout, giving the programmer even greater control over the execution of their computations.
-Such an integration presents an interesting interface design problem in how to refer to the products of schedule transformations that may combine multiple loops into one. 
+Overall, performance portability libraries are a useful tool to have when developing portable codes for high performance systems.
+The abstractions they provide are easily extended to support even more complex transformations, two classes of which were shown here.
+While they are a powerful tool for dense computations, their data and loop abstractions are too coupled to support format-independent descriptions of sparse computations.
+
 

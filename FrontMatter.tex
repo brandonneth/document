@@ -101,7 +101,7 @@ GRADUATE COLLEGE
 
 \noindent\underline{\makebox[4.0in][r]{}} \hspace{0.4in} Date: \defensedate \\
 {\bfseries\facnameA}\\
-\emph{(Member)} %This line can be commented out if necessary
+\emph{(Co-Chair)} %This line can be commented out if necessary
 \vspace*{0.3in}
 
 \noindent\underline{\makebox[4.0in][r]{}} \hspace{0.4in} Date: \defensedate \\
@@ -112,7 +112,11 @@ GRADUATE COLLEGE
 \noindent\underline{\makebox[4.0in][r]{}} \hspace{0.4in} Date: \defensedate \\
 {\bfseries\facnameC}\\
 \emph{(Member)} %This line can be commented out if necessary
-\vspace*{0.5in}
+\vspace*{0.3in}
+
+\noindent\underline{\makebox[4.0in][r]{}} \hspace{0.4in} Date: \defensedate \\
+{\bfseries\facnameD}\\
+\emph{(Member)} %This line can be commented out if necessary
 
 % If 4th committee member is needed, copy the preceding 4 lines, change to facnameD in copied lines
 % You will then need to adjust vertical spacing to keep committee approval page to 1 page length
@@ -167,30 +171,37 @@ Dissertation Director: \chairname \\
 \begin{center}
 \MakeUppercase{Acknowledgements}\\ \bigskip
 \end{center}
-% Nicco
-% Don & Lorann
-% Rosie and Frank
-% Drew
-% Atlas
-% Sedona
-% Samuel
-% Lexy
-% Jalen
-% Manda and Razia
-% DLP
-% GPSC
-% UCW
-% TFS
-% Campus Pantry
-% Forest Defenders
-% Michelle, Bronis, Tom
-% Committee
+
+No one creates history alone, and the same is true of dissertations.
+None of this --- the experiences, the growth, nor this document --- could have been possible without the support of countless people.
+Thanks first to my parents for their love and for raising me to be determined, honest, and caring.
+To Nicco, my loving partner, for learning alongside me how to care for each other, and for putting up with my grumpy ass (and feeding the cats) whenever the Numbers were Bad.
+
+Thank you to my friends, new and old, far and near.
+To Jalen, for always lending an ear and a thought, not always the ones I wanted, but certainly the ones I needed.
+To Atlas, for braving that summer with me, and for those many mornings of pasta and Dance Moms.
+And thank you Drew for the many evenings spent dishing tea, and for your unwavering dedication to doing what's right.
+
+Thank you to all those at the University who have committed themselves to the struggle for a just, equitable, and democratic workplace.
+Thank you to United Campus Workers and the Graduate and Professional Student Council, especially to Sedona, Samuel, and Lexy, for the work and the wins, the rewards and, of course, the resignations.
+The party is only just getting started, and the winds are blowing in your favor.
+
 % Nicki, Josh, Berlin, Vignesh
 % Students of CSC 296
+A special thank you to the Cultural Competency in Computing Fellowship, especially to Dr.\ Washington, for fostering a space of growth, both personal and professional.
+Thank you Josh, Berlin, and Vignesh for bringing that growth home concretely in our course.
+And thank you to the students who took it, for contributing to that magical space of co-creation.
+
+Thank you Michelle, for showing me what it means to do research.
+The lessons you've taught are endless, and your encouragement has made this all possible.
+Thank you Tom, for your impressive wealth of knowledge and ideas. Your suggestions and help have been invaluable these past years.
+Thank you Bronis, for your strong feedback, and for keeping our projects grounded to the goals that really mattered.
+And of course, thank you to my committee.
+I hope you like the pages that follow.
+
+
 % Marx
 % Unnamed computers whose labor is immortalized in our computers, our compilers, and our programs
-
-This document allows you to type your acknowledgements to people, groups and organizations that have helped you along the way\ldots
 
 %----------------------------------------------------------------------------------------
 %	DEDICATION
@@ -254,7 +265,7 @@ Unfortunately, they leave out important opportunities for optimizations that are
 A programmer who wishes to improve data reuse through loop fusion or inter-loop layout changes cannot do so portably.
 Similarly, for codes using sparse data structures, the limited available abstractions require code to be format-dependent.
 Thus, the performance improvements of changing sparse formats come at the cost of rewriting entire kernels for the new format.
-This dissertation remedies these problems, introducing abstractions for cross-loop schedule and data transformations and format-independent abstractions for describing sparse computations.
+This dissertation remedies these problems, introducing abstractions for cross-loop schedule and data transformations and format-independent abstractions for describing sparse computations into a representative performance portability library, RAJA\@.
 
 First, I introduce an interface for cross-kernel scheduling transformations through the RAJALC framework.
 The framework uses runtime symbolic evaluation to partially automate and ensure the correctness of the transformations.
@@ -266,7 +277,7 @@ Finally, I develop prototype support for the format-independent description of s
 Because the description of the computation is independent of the sparse format, changing sparse formats becomes as simple as with dense.
 The hypothesis was that because the approach to separating the sparse format from the computation description has the same algorithmic complexity as a hand-written sparse loop nest, the performance would be comparable.
 However, evaluation shows that there is significant runtime overhead due to the implementation needing to perform checks in the innermost loops and other constant time work.
-I conclude that more significant changes to performance portability library interfaces will be needed to support general sparse computations.
+I conclude that more significant changes to performance portability library interfaces will be needed to support the higher level of coupling between data and loops within general sparse computations.
 Still, the current abstractions are capable of supporting cross-loop scheduling and data transformations for dense codes efficiently. 
 
 

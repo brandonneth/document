@@ -1,16 +1,4 @@
-
 \chapter{Data Transformations}\label{chap:FormatDecisions}
-
-On today's high performance architectures, using the memory hierarchy effectively is a great challenge with a great reward.
-When performance considerations --- architecture, memory hierarchy configuration, even input data characteristics --- are hard-coded into the application, improved memory performance comes at the cost of maintainability and portability. 
-This is especially relevant for schedule and data optimizations that are applied across loops, where the optimization obscures the underlying operation of the code.
-To address this problem, performance portability libraries like RAJA, Kokkos, and YAKL provide abstractions for controlling how loops are scheduled/parallelized and how data is laid out initially.
-However, they do not support changing data layouts between loops without significant manual intervention.
-This chapter's focus is on data layout transformations among canonical data layouts and the challenges inherent in enabling their high-level control within performance portability libraries.
-First, I introduce programming abstractions into the RAJA library to collect and apply data format transformations between kernels.
-Then, I incorporate a built-in performance model for as-automated-as-desired transformation selection.
-Additionally, I extend RAJA's iteration space description to support loops with non-rectangular iteration spaces, expanding RAJA's expressive capability.
-This approach achieves similar performance improvement to hand-implemented data layout optimizations with significantly fewer code changes across seven key benchmarks and one application case study.
 
 \section{Introduction}
 
@@ -18,244 +6,336 @@ The gap between CPU speeds and memory latency recurs throughout computing histor
 From the 384 byte ``B-store'' of the 1960 Ferranti Atlas~\cite{ferranti1960features} to the multi-level cache systems of today, memory hierarchy has endured as the solution.
 The challenge is handed from the architect to the programmer, who must write programs that make use of this hierarchy efficiently.
 There are two ways of doing this: changing the order in which data is accessed (loop schedules) and changing the order in which data is stored (data layouts).
+The previous chapter focused on schedule transformations across multiple loops. 
+This chapter focuses on runtime data layout transformations among canonical data layouts.
 
-When optimizing code by hand, both types of transformation are onerous to implement. 
-This is especially true when the optimization is applied across multiple loops or in sequence.
+%Motivate the incorporation of data layout optimizations into PPLs
+When optimizing code by hand, these transformations are onerous to implement.
 The original, modularized implementation of a computation is obscured by the changes of implementing the transformation. 
 When a code is meant to run on multiple systems or evolve to support new features, these optimizations can end up being more trouble than they are worth, the performance improvement offset by the increased maintenance and porting costs.
 
-
-Performance portability libraries --- like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} --- partially address this problem.
+Performance portability libraries (PPLs) --- like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} --- partially address this problem.
 By breaking the description of a computation into separable components, programmers can experiment with different schedules and layouts without obscuring the code's underlying operation.
-However, programmer control of the layout of data is limited to initialization. 
-Thus, a programmer must use that particular data format for the entire computation.
-Should they wish to change the data layout mid-computation, they would have to use multiple arrays for the same data, ensuring that each maintain the correct contents.
+However, control of the layout of data is limited to a global scope; data cannot be reorganized with different layouts throughout a computation.
+Should they wish to change the data layout mid-program, they would have to use multiple arrays for the same data, ensuring that each maintain the correct contents.
 The brave soul who chooses this option must still overcome yet another obstacle: selecting the right combination of formats.
 Even a modest computation of two loops that use four 2D arrays has more than 200 combinations from which to choose, so trying all possible options quickly becomes infeasible. 
 
-I focus here on data layout transformations between canonical data layouts.
-This is a well-known class of optimization, usually implemented within the context of a specialized compiler~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic,chen2004ilp,chen2005constraint,chen2005integrating, ozturk2011data}.
-However, there are clear limitations to the fully automated approach, evidenced by its exclusion from all major production compilers.
-Chief among them is the lack of programmer control.
-Others have made efforts to enable this user control in domain-specific languages, such as ExaSlang~\cite{kronawitter2018automatic} and Tiramisu~\cite{baghdadi2019tiramisu}.
-Unfortunately, while domain-specific languages are powerful expressive tools, they require specialized compilers and build pipelines. 
+%Motivate the problems that arise from incorporation into PPLs
+The transformations under consideration here, for example switching a 2D matrix from column- to row-major storage, are well known.
+They have been incorporated as automatic transformations within distributed computing contexts as source-to-source research compilers for High Performance Fortran and Fortran D~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic}.
+More recently, others have made efforts to incorporate user control of these transformations in domain-specific languages, such as DL~\cite{sung2012dl}, ExaSlang~\cite{kronawitter2018automatic} and Tiramisu~\cite{baghdadi2019tiramisu}.
+These DSLs recognize the importance of giving the programmer control over how the program is optimized. %Significance of user indicating layout
+However, both the automated and user-controlled approaches use compilers that are specialized, unstandardized, and in the case of HPF no longer existent.
+For codes already written using PPLs, where using a standardized language and production-grade compiler is important, these approaches are not feasible.
 
-In this chapter, I address the problem of enabling high-level programmer control of these layout transformations within RAJA, a C++ performance portability library.
-The first challenge is providing an interface for describing the format data should have for different parts of the computation.
-The second challenge is enabling programmer control without requiring it.
-This requires the composition of programmer decisions with automated decisions.
-Because the automated components are executed at run-time rather than compile-time, this introduces additional subproblems: properly modeling the behavior of the kernel and solving the model efficiently enough that the overhead can be amortized over the computation.
+%Focus on the challenges
+Fortunately, performance portability libraries already contain data abstractions that can form the basis for supporting these transformations.
+Still, there remain challenges.
+First is enabling programmer control of per-loop data layout without requiring it.
+Because necessary program analysis and modeling cannot be done at compile-time without modifying the compiler, it must be done at runtime instead.
+This leads to the next challenge: the overhead of the analysis and performance modeling must be smaller than the improvements provided by the transformations.
+Finally, important computations that benefit from layout changes, like correlation and covariance calculations, have iteration spaces where inner loop bounds depend on outer loop iterators, which is not supported by any of the three PPLs.  %Specific motivation of triangular iteration spaces
 
-We make the following contributions:
+%Clear contributions
+In this chapter, I present an approach that resolves these problems while balancing user control with automation, inspired by inspector-executor patterns often used in the realm of sparse computations~\cite{saltz1990run,saltz1991multiprocessors,Strout14IPDPS,strout2018sparse}.
+I also present an implementation of this approach in the RAJA library, and sketch how it would be incorporated into other PPLs.
+To provide optional automated layout selection, a runtime performance model uses data access information gathered from symbolic evaluation (see Section~\ref{sec:symEval}) and microbenchmarking results to solve an optimization problem based on previous approaches~\cite{bixby1994automatic}.
+Rather than using an integer linear programming (ILP) formulation, I reduce runtime modeling time by using a nonlinear programming problem instead. 
+This chapter makes the following contributions:
 \begin{itemize}
-\item Programming abstractions for specifying and applying data layout transformations between loops, implemented in the \FormatDecisions{} API\@;
-\item An as-automated-as-desired transformation selection system using an in-library performance model to augment user decisions; and
-\item Support for a wider range of computations by expanding the types of iteration spaces that RAJA can represent.
+\item An interface for combining user-specified layout choices with additional choices based on runtime modeling;
+\item An optimization to the runtime benchmarking to increase the reuse of results;
+\item An optimization to the model's optimization problem to reduce the number of variables by using a nonlinear formulation instead of a linear one; and 
+\item Support for iteration spaces with parametric bounds, which includes triangular iteration spaces and are expanded in Chapter~\ref{chap:SparseRAJA} to support sparse iteration spaces. %connection of symbolic segments to sparse contribution
 \end{itemize}
-I evaluate the contributions by comparing its performance and source lines of code (SLOC) changed/added to hand-implemented transformations on a collection of benchmark kernels.
-Additionally, we examine its use on the miniQMC proxy application.
 
-The rest of the paper proceeds as follows. 
-Section 2 reviews the RAJA library, prior extensions we use in the current work, and new support for symbolic description of iteration spaces.
-Section 3 introduces the \FormatDecisions{} interface.
-Sections 4 detail how we construct our performance model and estimate the costs of different layout conversion choices.
-Sections 5 and 6 evaluate the impact of \FormatDecisions{}  on performance and productivity.
-Section 7 reviews related work and Section 8 concludes.
-
+I begin with an overview of performance portability libraries, and RAJA in particular (Section 2).
+Then, I expand the iteration space abstractions to support computations with relations between loop dimensions (Section 3).
+Next, I introduce an interface for user-specified layout transformations between computations (Section 4).
+This interface incorporates optional runtime modeling based on microbenchmarking to augment user choices without overriding them.
+I build on existing automated approaches and make two key optimizations: one to reduce the number of model coefficients and one to reduce the number of model variables (Section 5).
+Finally, I evaluate the model's accuracy and performance, as well as the entire system's performance and productivity for six benchmark kernels and one application case study (Section 6).
+I then review related work (Section 7), and conclude (Section 8).
 
 
-%%%%%%%%%%%%%%%
-\section{Programming with RAJA}\label{sec:kernelObjects}
+\section{Background}
 
-\begin{figure}
-	\begin{lstlisting}[
-		caption={The \textsc{3mm} kernel (E = A * B, F = C * D, G = E * F) implemented using RAJA.},
-		label={3MMStart}]
-	auto row_major = make_permuted_layout(sizes, {{0,1}});
-	auto column_major = make_permuted_layout(sizes, {{1,0}});
+Each of the three PPLs has its own programming model and interface, yet the abstractions present in each have similarities.
+Most relevant in this chapter are their respective multi-dimensional data abstractions.
 
-	View2D A(A_data, row_major);
-	View2D B(B_data, column_major);
-	... initializations proceed similarly for C-G with row_major
+\subsection{PPL Data Abstractions}
 
-	using POLICY = KernelPolicy<
-		statement::For<0,omp_parallel_for_exec,
-			statement::For<1,seq_exec,
-				statement::For<2,simd_exec,
-					statement::Lambda<0>
-	>>>>;
+All three PPLs have a core multi-dimensional data abstraction around which the rest of the libraries are developed.
+In Kokkos and RAJA, the abstraction is the \verb.View..
+In YAKL, the abstraction is the \verb.Array..
+The key feature shared by these types is that they decouple how the data is referenced from how it is stored.
 
-	auto A_times_B = [&](auto i0, auto i1, auto i2) {
-		E(i0, i1) += A(i0,i2) * B(i2,i1);
-	};
-	auto C_times_D = [&](auto i0, auto i1, auto i2) {
-		F(i0, i1) += C(i0,i2) * D(i2,i1);
-	};
-	auto E_times_F = [&](auto i0, auto i1, auto i2) {
-		G(i0, i1) += E(i0,i2) * F(i2,i1);
-	};
-	
-	auto one_dim = RangeSegment(0,N);
-	auto domain = make_tuple(one_dim, one_dim, one_dim);
+How exactly the libraries achieve this decoupling differs in both name and method.
+In YAKL, \verb.Array. objects have a ``style'' template parameter that indicate if the object should be C style (row-major) or Fortran style (column-major). 
+The \verb.View. object in Kokkos also uses a template parameter to specify the mapping of indices to memory.
+Kokkos has \verb.LayoutRight. for row-major storage, \verb.LayoutLeft. for column-major, and \verb.LayoutStride. for layouts with arbitrary dimensional strides.
+In RAJA, the \verb.View. object is templated by a layout type as well, but the layout type itself does not specify the ordering of the dimensions. 
+Instead, layout objects are instantiated at runtime with dimensional orderings and associated with the View when it is initialized.
 
-	auto knl1 = make_kernel<POLICY>(domain, A_times_B);
-	auto knl2 = make_kernel<POLICY>(domain, C_times_D);
-	auto knl3 = make_kernel<POLICY>(domain, E_times_F);
-
-	knl1();
-	knl2();
-	knl3();
-	\end{lstlisting}
-\end{figure}
+\subsection{Inspector-Executor Code}
+\todo{motivate the need for an IE approach}
+\todo{explain what it means}
 
 
+\section{Parametric Iteration Spaces}
+\todo{describe that the previous Ulrich and Rude work doesn't handle triangular loops.}
 
-We use a variety of components of the performance portability C++ library RAJA to enable automatic data format transformations, as well as features of the loop chain extension RAJALC (see Chapter~\ref{chap:RAJALC}).
-This section reviews how a computation is programmed in RAJA, the additions made by RAJALC, and how this work adds more expressive capabilities to the RAJA programming model.
+While PPLs break the description of a computation into clear and separable parts, their approaches for representing iteration spaces are limited in expressivity.
+The expressivity varies by PPL\@.
+Kokkos is limited to iteration spaces composed of contiguous ranges.
+YAKL additionally supports noncontiguous dimensions with constant strides.
+RAJA is the most expressive, due to its \verb.ListSegment. abstraction, which supports iteration space dimensions with arbitrary lists of index values.
+However, while any individual dimension can contain arbitrary values, they can only be composed into a multidimensional iteration space using the cartesian product.
 
-\subsection{RAJA and RAJALC}
+Computations with iteration space dimensions that change throughout the computation, such as those with triangular iteration spaces, cannot be represented within this framework. 
+Examples of these computations include LU decomposition, Cholesky factorization, and statistical calculations like covariance and correlation.
+These are important computations in scientific computing and PPLs should be able to represent them.
 
-RAJA's utility comes from the way it decomposes a computation into clear parts.
-A RAJA kernel has four: the operation, the iteration space, the schedule, and the data. 
-Listing~\ref{3MMStart} shows these different components in action to implement a sequence of matrix multiplications, both how they are specified individually and how they are composed into a kernel.
-
-The operation a kernel performs is provided as a function object, usually through defining a lambda function that executes one loop iteration.
-For the 3MM kernel in Listing~\ref{3MMStart}, the three lambdas are defined on lines 21 through 31. 
-
-The iteration space for a computation is defined as a tuple of dimensions.
-While a dimension can be defined using any generic container, RAJA provides ways to easily constructing ranges and lists.
-One such method is the \verb.RangeSegment., used on line 33 of Listing~\ref{3MMStart} to create the range from $0$ to $N$. 
-Because the example here works with square matrices, the full iteration space, defined on line 34, is a three-tuple of this segment. 
-
-The schedule of a computation is given by the kernel policy, a template parameter. 
-Kernel policies indicate multiple important features of a computation.
-First, they describe the order in which the iteration space should be traversed.
-In the policy defined on lines 10 through 18 of Listing~\ref{3MMStart}, we see that the \verb.statement::For. types each have a number as their first template argument: 0, 1, then 2.
-This indicates that the outermost loop should traverse the first dimension of the iteration space, the middle loop should traverse the second, and the innermost loop should traverse the third. 
-Changing the order of these numbers is akin to performing a loop interchange transformation.
-Second, the kernel policy describes how each dimension of the iteration space should be executed using an execution policy.
-Note that in the example, each \verb.statement::For. has a different second template argument.
-On the outermost statement, the \verb.omp_parallel_for_exec. policy means that the loop should be parallelized using OpenMP\@. 
-On the middle statement, the \verb.seq_exec. policy means that the loop should be executed sequentially.
-Finally, on the innermost statement, the \verb.simd_exec. policy means that the loop should be vectorized.
-By separating out the schedule from the operation and the iteration space, RAJA simplifies the process of exploring different schedules and their impact on performance.
-
-After defining the different pieces of a computation, they are recomposed using the execution constructs \verb.forall. and \verb.kernel..
-These templated functions execute a loop immediately, whereas the RAJALC \verb.make_forall. and \verb.make_kernel. extensions create wrapper objects that are executed through the call operator. 
-Calls to \verb.make_kernel. can be seen in lines 36 through 38 in Listing~\ref{3MMStart}, and the execution of the three matrix multiplications are found in lines 40 through 42. 
-While the RAJALC functions create computation objects rather than immediately executing the computation, their interfaces are the same as their base RAJA counterparts.
-
-\subsection{Views and Symbolic Evaluation}
-
-The last component of a computation is the data.
-Here, RAJA is quite flexible, offering, but not requiring, array wrappers called Views.
-The View object has two capabilities that make it an especially valuable tool within RAJA codes.
-First, Views fully parameterize their underlying data formats with the Layout object.
-Without Views, to switch their data from row-major to column-major, a programmer must change the definition of the array \textit{and} must change every access \verb.A[i][j]. to \verb.A[j][i]..
-This mechanism is prohibitively expensive, especially when the programmer does not yet know the performance impact of the decision.
-With Views however, the programmer only needs to change the View's definition: the layout permutation changes from $(0,1)$ to $(1,0)$. 
-In Listing~\ref{3MMStart}, \verb.A. is defined with the row-major $(0,1)$ layout, but \verb.B. is defined with the column-major $(1,0)$ layout. 
-Note that the change in \verb.B.'s layout does not change how it is used in the computation. 
-
-Second, Views use the call operator to perform memory accesses. 
-By overloading this call operator, RAJALC~\cite{neth2021inter} introduced capabilities into RAJA for runtime symbolic evaluation.
-RAJALC uses the symbolic evaluation results to partially automate and ensure the safety of its schedule transformations.
-Here, I use it in automated transformation selection model.
-
-The usual evaluation of the lambda would read, combine, and write different data elements.
-With symbolic evaluation, operator overloading creates expression trees instead.
-As an example, I walk through the symbolic evaluation of a lambda containing the statement \verb.A(i) = B(i+1)..
-First to be evaluated is the expression \verb.i+1.. 
-The \verb.+. operator is overloaded to create a new symbolic iterator expression tree, representing the \verb.i+1.. 
-Then, the View's call operator is overloaded to create a symbolic access object, containing a reference to \verb.B. and the previously constructed expression tree.
-The access to \verb.A. resolves to a similar symbolic access object.
-Finally, the assignment operator is overloaded to mark the symbolic access to \verb.B. as a read and the access to \verb.A. as a write.
-After the lambda is done evaluating, the symbolic accesses are extracted from the symbolic iterator that was passed into the lambda, which maintains a list of all the accesses of which it was a part.
-
-Because \FormatDecisions{} uses this feature of RAJALC, it inherits its limitations.
-Most important among them are the requirement that all accessed data is stored in Views and the prohibition of indirect accessing.
-These restrictions are only present when the programmer wishes to use the automated transformation selection system. 
-This means that a programmer can still use \FormatDecisions{} to do manual experimentation with layout transformations, an example of which can be found in Section~\ref{sec:miniQMC}.
-
-\subsection{Symbolic Iteration Spaces}\label{sec:SymbolicSegment}
-While RAJA breaks the description of a computation into clear and separable parts, one of those parts, the iteration space, is limited in its expressive capability.
-RAJA offers two abstractions for describing a dimension of an iteration space: the \verb.RangeSegment. and the \verb.ListSegment..
-The \verb.RangeSegment. represents a strided range of values while the \verb.ListSegment. represents an arbitrary list of values.
-The problem arises from the only way to combine segments to create multi-dimensional iteration spaces: cartesian product.
-Computations with dimensions that change through the computation, such as those with triangular iteration spaces, cannot be represented within this framework.
-Examples of these computations include LU decomposition, cholesky factorization, and statistical calculations like covariance and correlation.
-
-
-To address this limitation and represent iteration spaces with relations between the dimensions, I introduce the \verb.SymbolicSegment. type. 
-Unlike the \verb.RangeSegment., which requires integer values for its start, stop, and stride, the \verb.SymbolicSegment. supports expressions that combine other segments with constant values. 
+To address this limitation and represent iteration spaces with relations between the dimensions, I introduce the \verb.SymbolicSegment. type to the RAJA library, which also forms the basis of the sparse iteration space description framework in Chapter~\ref{chap:SparseRAJA}. 
+Unlike the \verb.RangeSegment., which requires integer values for its start, stop, and stride, the \verb.SymbolicSegment. supports bounds expressions that combine other segments with constant values. 
 This process involves two elements.
 First, the \verb.SymbolicSegment. objects maintain their current value through the execution of a kernel. 
 Second, rather than returning a static value, the \verb.begin(). and \verb.end(). methods calculate the start and stop values dynamically based on the expressions used in their construction. 
-An example using our approach to define a triangular iteration space is shown in Listing~\ref{TriangularIterationSpace}.
+
+Valid bound expressions in the definition of a \verb.SymbolicSegment. can contain numeric constants and previously defined symbolic segments, combined with the four basic arithmetic operators. 
+By overloading the arithmetic operators to construct expression trees, the symbolic segments can delay evaluating the bounds of the dimension until that level of the loop nest is reached.
+Further, it can \textit{re}-evaluate inner bounds expressions as the outer iterator values change.
+
+This approach evaluates the bounds expressions only at the start of each nesting level, akin to the init-statement of a standard for-loop.
+Once the bounds expressions are evaluated, the dimension is treated as a standard contiguous range, but maintains the iterator value within the \verb.SymbolicSegment. object itself.
+This allows the value to be used in the evaluation of bounds expressions for deeper nesting levels.
+
+Because the expressions can contain division operations, evaluating them as integer expressions may lead to unexpected results. 
+For example, as a lower bound, the expression \verb_1.5 - iSeg / 2_ resolves to $1$ when \verb.iSeg. has the value $0$. 
+This is problematic, as $1$ is not greater than or equal to $1.5 - 0/2$.
+The problem persists when expressions are rearranged to contain only integers; \verb.(3 - iSeg) / 2. suffers the same fate.
+To address this issue, bounds are evaluated as floating point expressions then cast to integer values based on the bound type.
+Lower bounds are cast to their ceiling, while upper bounds are cast to their floor.
+
+Symbolic segments can readily express the triangular iteration spaces found in the computations mentioned above. 
+Listing~\ref{triangularComparison} shows how a triangular iteration space written using a C++ nested for-loop is expressed using symbolic segments.
 
 \begin{figure}
-	\begin{lstlisting}[caption={An example of a loop with a triangular iteration space, expressed in C++ and using our SymbolicSegments.},label={TriangularIterationSpace}]
-// C++ implementation
-for(int i = 0; i < N; i++) {
-	for(int j = i; j < N; j++) {
-		...
+\begin{lstlisting}[caption={Comparison of C++ for-loop and RAJA \texttt{SymbolicSegment} representations of a loop nest with a triangular iteration space.},label=triangularComparison]
+//C++ for-loop
+for(int i = 0; i < Ni; i++) {
+	for(int j = i; j < Nj; j++) { // j starts at i
+		... 
 	}
 }
 
-auto i_seg = make_symbolic_segment(0,N);
-auto j_seg = make_symbolic_segment(i_seg, N);
-auto segs = make_tuple(i_seg, j_seg);
+//RAJA SymbolicSegments
+auto iSeg = make_symbolic_segment(0, Ni);
+auto jSeg = make_symbolic_segment(iSeg, Nj);
+auto segments = make_tuple(iSeg, jSeg);
+\end{lstlisting}
+\end{figure}
 
-	\end{lstlisting}
+However, they cannot represent all possible polygonal iteration spaces. 
+Figures~\ref{goodTriangles},~\ref{trapezoid1}, and~\ref{badShapes} illustrate the space of iteration spaces that can be represented with symbolic segments. 
+The key restriction is that dimension bounds cannot contain cyclical dependences.
+This means that if the $i$ dimension is used to define the bounds of the $j$ dimension, then the definition for the $i$ dimension cannot depend on the $j$ dimension. 
+This requirement is enforced by the syntax of the abstraction, as a \verb.SymbolicSegment. cannot be forward-declared.
 
+\begin{figure}
+\begin{subfigure}{0.4\columnwidth}
+\begin{tikzpicture}
+\foreach \x in {-1,0,1,2,3,4,5}
+\foreach \i in {-2,-1,0,1,2,3,4,5}
+	\filldraw [gray] (\x, \i) circle (2pt);
+\draw[thick,<->] (-0.5,0) -- (4.5,0) node[anchor=north west] {x};
+\draw[thick,<->] (0,-0.5) -- (0,4.5) node[anchor=south east] {y};
+\foreach \x in {0,1,2,3,4}
+	\draw (\x cm,1pt) -- (\x cm,-1pt) node[anchor=north west] {$\x$};
+\foreach \i in {0,1,2,3,4}
+	\draw (1pt,\i cm) -- (-1pt,\i cm) node[anchor=south east] {$\i$};
+	
+\draw [black, very thick] (0,-1) -- (2,3) -- (4,-1) -- (0,-1);
+\end{tikzpicture}
+\caption{Graphical depiction of iteration space with dependent $x$ dimension.}\label{triangularIterationSpace1}
+\end{subfigure}
+\hspace{0.05\columnwidth}
+\begin{subfigure}{0.55\columnwidth}
+\begin{subfigure}{\columnwidth}
+\begin{align}
+	-1 \leq &y < 4 \\
+	(1 + y) * 0.5 \leq &x \leq (7 - y) * 0.5
+\end{align}
+\caption{Constraint description of iteration space from~\ref{triangularIterationSpace1}.}\label{constraintDescription1}
+\end{subfigure}
+
+\vspace{20pt}
+
+\begin{subfigure}{\columnwidth}
+\begin{lstlisting}[]
+auto y_seg = make_symbolic_segment(-1,4);
+auto x_seg = make_symbolic_segment_inclusive(
+							(y_seg + 1) * 0.5, 
+							(7 - y_seg) / 2);
+auto segments = make_tuple(y_seg, x_seg);
+\end{lstlisting}
+\caption{Description of iteration space from~\ref{triangularIterationSpace1} using symbolic segments.}\label{symseg1}
+\end{subfigure}
+\end{subfigure}
+
+\vspace{10pt}
+
+\begin{subfigure}{0.4\columnwidth}
+\begin{tikzpicture}
+\foreach \x in {-1,0,1,2,3,4,5}
+\foreach \y in {-2,-1,0,1,2,3,4,5}
+	\filldraw [gray] (\x, \y) circle (2pt);
+\draw[thick,<->] (-0.5,0) -- (4.5,0) node[anchor=north west] {x};
+\draw[thick,<->] (0,-0.5) -- (0,4.5) node[anchor=south east] {y};
+\foreach \x in {0,1,2,3,4}
+	\draw (\x cm,1pt) -- (\x cm,-1pt) node[anchor=north west] {$\x$};
+\foreach \y in {0,1,2,3,4}
+	\draw (1pt,\y cm) -- (-1pt,\y cm) node[anchor=south east] {$\y$};
+	
+\draw [black, very thick] (1,1) -- (4,0) -- (4,4) -- (1,1);
+\end{tikzpicture}
+\caption{Graphical depiction of iteration space with dependent $y$ dimension.}\label{triangularIterationSpace2}
+\end{subfigure}
+\hspace{0.05\columnwidth}
+\begin{subfigure}{0.55\columnwidth}
+\begin{subfigure}{\columnwidth}
+\begin{align}
+	1 \leq &x < 5 \\
+	(4/3 - x/3) \leq &y \leq x
+\end{align}
+\caption{Constraint description of iteration space from~\ref{triangularIterationSpace2}.}\label{constraintDescription2}
+\end{subfigure}
+
+\vspace{20pt}
+
+\begin{subfigure}{\columnwidth}
+\begin{lstlisting}[]
+auto x_seg = make_symbolic_segment(1,5);
+auto y_seg = make_symbolic_segment(
+							(4 - x_seg) / 3, 
+							x_seg + 1);
+auto segments = make_tuple(x_seg, y_seg);
+\end{lstlisting}
+\caption{Description of iteration space from~\ref{triangularIterationSpace2} using symbolic segments.}\label{symseg2}
+\end{subfigure}
+\end{subfigure}
+\caption{Two examples of representable triangular iteration spaces.}\label{goodTriangles}
+\end{figure}
+
+
+
+\begin{figure}
+\begin{subfigure}{0.4\columnwidth}
+\begin{tikzpicture}
+\foreach \x in {-1,0,1,2,3,4,5}
+\foreach \y in {-2,-1,0,1,2,3,4,5}
+	\filldraw [gray] (\x, \y) circle (2pt);
+\draw[thick,<->] (-0.5,0) -- (4.5,0) node[anchor=north west] {x};
+\draw[thick,<->] (0,-0.5) -- (0,4.5) node[anchor=south east] {y};
+\foreach \x in {0,1,2,3,4}
+	\draw (\x cm,1pt) -- (\x cm,-1pt) node[anchor=north west] {$\x$};
+\foreach \y in {0,1,2,3,4}
+	\draw (1pt,\y cm) -- (-1pt,\y cm) node[anchor=south east] {$\y$};
+	
+\draw [black, very thick] (0,0) -- (0,4) -- (3,3) -- (3,1) -- (0,0);
+\end{tikzpicture}
+\caption{Graphical depiction of quadrilateral iteration space with dependent $y$ dimension.}\label{trapezoidIterationSpace1}
+\end{subfigure}
+\hspace{0.05\columnwidth}
+\begin{subfigure}{0.55\columnwidth}
+\begin{subfigure}{\columnwidth}
+\begin{align}
+	0 \leq &x < 4 \\
+	x / 3 \leq &y \leq 4 - (x / 3)
+\end{align}
+\caption{Constraint description of iteration space from~\ref{trapezoidIterationSpace1}}\label{trapezoidConstraint1}
+\end{subfigure}
+
+\vspace{20pt}
+
+\begin{subfigure}{\columnwidth}
+\begin{lstlisting}[]
+auto x_seg = make_symbolic_segment(0,4);
+auto y_seg = make_symbolic_segment_inclusive(
+							x_seg / 3, 
+							4 - (x_seg / 3));
+auto segments = make_tuple(x_seg, y_seg);
+\end{lstlisting}
+\caption{Description of iteration space from~\ref{trapezoidIterationSpace1} using symbolic segments.}\label{trapseg1}
+\end{subfigure}
+\end{subfigure}
+\caption{An example irregular quadrilateral iteration space that can be represented using symbolic segments.}\label{trapezoid1}
+\end{figure}
+
+
+
+\begin{figure}
+\begin{subfigure}{0.5\columnwidth}
+\begin{tikzpicture}
+\foreach \x in {-1,0,1,2,3,4,5}
+\foreach \y in {-1,0,1,2,3,4,5}
+	\filldraw [gray] (\x, \y) circle (2pt);
+\draw[thick,<->] (-0.5,0) -- (4.5,0) node[anchor=north west] {x};
+\draw[thick,<->] (0,-0.5) -- (0,4.5) node[anchor=south east] {y};
+\foreach \x in {0,1,2,3,4}
+	\draw (\x cm,1pt) -- (\x cm,-1pt) node[anchor=north west] {$\x$};
+\foreach \y in {0,1,2,3,4}
+	\draw (1pt,\y cm) -- (-1pt,\y cm) node[anchor=south east] {$\y$};
+	
+\draw [black, very thick] (1,1) -- (3,4) -- (4,0) -- (1,1);
+\end{tikzpicture}
+\caption{Nonrepresentable triangular iteration space. $x$ and $y$ dimensions are defined circularly.}\label{triangularIterationSpace3}
+\end{subfigure}
+\begin{subfigure}{0.5\columnwidth}
+\begin{subfigure}{\columnwidth}
+\begin{align}
+	&y \geq 4/3 - x/3 \\
+	&y \leq (3 * x - 1) / 2 \\
+	&x \leq 4 - y/4
+\end{align}
+\caption{Constraint description of iteration space in~\ref{triangularIterationSpace3}}\label{constraintDescription3}
+\end{subfigure}
+
+
+
+\end{subfigure}
+
+\vspace{10pt}
+
+\begin{subfigure}{0.5\columnwidth}
+\begin{tikzpicture}
+\foreach \x in {-1,0,1,2,3,4,5}
+\foreach \y in {-1,0,1,2,3,4,5}
+	\filldraw [gray] (\x, \y) circle (2pt);
+\draw[thick,<->] (-0.5,0) -- (4.5,0) node[anchor=north west] {x};
+\draw[thick,<->] (0,-0.5) -- (0,4.5) node[anchor=south east] {y};
+\foreach \x in {0,1,2,3,4}
+	\draw (\x cm,1pt) -- (\x cm,-1pt) node[anchor=north west] {$\x$};
+\foreach \y in {0,1,2,3,4}
+	\draw (1pt,\y cm) -- (-1pt,\y cm) node[anchor=south east] {$\y$};
+	
+\draw [black, very thick] (0,1) -- (1,4) -- (4,3) -- (4,1) -- (0,1);
+\end{tikzpicture}
+\caption{Nonrepresentable quadrilateral iteration space. $x$ and $y$ dimensions are defined circularly.}\label{trapezoidIterationSpace2}
+\end{subfigure}
+\begin{subfigure}{0.5\columnwidth}
+\begin{align}
+	-1/3 + y/3 \leq &x \leq 4 \\
+	1 \leq &y \leq (13-x) / 3
+\end{align}
+\caption{Constraint description of iteration space in~\ref{trapezoidIterationSpace2}}\label{trapezoidConstraint2}
+\end{subfigure}
+
+\caption{Two examples of irregular iteration spaces that cannot be represented using symbolic segments. They are not representable because the dimension bounds are defined circularly.}\label{badShapes}
 \end{figure}
 
 \section{Transforming Data Layouts}
-
-
-
-% \begin{figure}
-% 	\begin{lstlisting}[caption={Changing data layouts for one View in the \textsc{3mm} benchmark manually.},label={ByHand3MM}]
-% auto knl1 = make_kernel<KPOL>(segs1, [=](auto i0, auto i1, auto i2) {
-% 	E(i0, i1) += A(i0, i2) * B(i2, i1);
-% });
-% auto knl2 = make_kernel<KPOL>(segs2, [=](auto i0, auto i1, auto i2) {
-% 	F(i0, i1) += C(i0, i2) * D(i2, i1);
-% });
-% auto knl3 = make_kernel<KPOL>(segs3, [=](auto i0, auto i1, auto i2) {
-% 	G(i0, i1) += E(i0, i2) * F(i2, i1);
-% });
-
-% knl1();
-
-% // Reorder F's data for row-major order
-% double * tmp1 = new double[n*n];
-% for(int i = 0; i < n; i++) {
-% 	for(j = 0; j < n; j++){
-% 		tmp1[i*n + j] = F(i,j);
-% 	}
-% }
-% memcpy(F.data, tmp1, n*n);
-% F.layout = row_major;
-% delete[] tmp1;
-
-% knl2();
-
-% // Reorder F's data for column-major order
-% double * tmp2 = new double[n*n];
-% for(int i = 0; i < n; i++) {
-% 	for(j = 0; j < n; j++){
-% 		tmp2[j*n + i] = F(i,j);
-% 	}
-% }
-% memcpy(F.data, tmp2, n*n);
-% F.layout = col_major;
-% delete[] tmp2;
-
-% knl3();
-% 	\end{lstlisting}
-% 	\Description[Manual implementation of layout transformation]{Fully described in the text.}
-% \end{figure}
 
 \begin{figure}
 \begin{lstlisting}[caption={Changing data layouts for three Views in the \textsc{3mm} benchmark using \FormatDecisions.},
@@ -306,7 +386,6 @@ The first, \verb.set_format_for()., takes as arguments the View, the desired dim
 The second method, \verb.set_output_format()., takes a View and a dimensional ordering and ensures the View has that layout after the sequence of computations is done executing.
 Lines 13 through 17 of Listing~\ref{FormatDecisions3MM} show four such registered choices.
 
-
 While \FormatDecisions{} provide a supplementary decision model that can identify additional worthwhile layout changes, its use is not mandatory.
 To ``fill-in'' the user's choices with those of the model, the programmer can use the \verb.model(). method.
 Because this method uses the symbolic evaluation capabilities provided by RAJALC, it can only be used when the operations are supported for symbolic evaluation.
@@ -324,7 +403,7 @@ A single registering function cannot provide this capability.
 
 Another important consideration is the semantics of the registered decisions. 
 Should the user be registering format conversions or should they be registering the format with the assumption that any necessary conversion is made by the library?
-We argue that it should be the latter.
+I argue that it should be the latter.
 First, registering formats is more declarative, as it does not dictate exactly how or when the data is converted to the desired format.
 Second, registering conversions requires specification of both the input and output formats. 
 Any conversion can be specified with two format registrations, but no number of conversion registrations can specify the same thing as a single format registration.
@@ -332,601 +411,476 @@ Any conversion can be specified with two format registrations, but no number of 
 With these considerations in mind, I decided on two methods: \verb.set_format_for. and \verb.set_output_format..
 When choosing this pair, the shorter \verb.set_format. was considered, but lacks the mnemonic match between the words of the method name and the parameter order. You \textbf{set} the View to \textbf{format} X \textbf{for} computation Y. 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Constraint Model}
 
-In addition to the format changes registered by the user, \FormatDecisions{} gives the user the option to automate the transformation selection process through the \verb.model(). method.
-This capability means that even without any registered format choices, \FormatDecisions{} often selects the same changes the user would themselves choose.
-Following existing work, I encode the problem as an optimization problem where constraints encode registered decisions and the objective function encodes the estimated costs of format use and conversion.
-While the overall technique is based on existing work, implementing it within the RAJA library introduces new challenges, especially around estimating the costs of applying the transformations and using different layouts in the code.
+\section{Automatic Layout Selection}
 
-The next three subsections describe how I set up the decision space and constraints, how I construct the objective function, and how I estimate the cost coefficients for the variables in the model.
-While this model is built into the \FormatDecisions{} system, alternative models and approaches for automating the selection process can easily be incorporated as well.
+\FormatDecisions{} supports optional automated layout selection through the \verb.model(). method.
+Broadly, the system constructs a search space of possible choices, estimates their costs based on a performance model, and selects the one with the lowest.
+The problem of automatic layout selection has been formulated as an integer linear programming (ILP) problem by Bixby, Kennedy, and Kremer~\cite{bixby1994automatic}.
+The system used within \FormatDecisions{} is based on their formulation, but makes several modifications.
+First, instead of using a static cost model, \FormatDecisions{} estimates costs using runtime microbenchmarking, which more accurately captures the performance characteristics of modern architectures.
+Second, it uses a modified heuristic for determining the candidate layouts to include in the model.
+Finally, \FormatDecisions{} uses a nonlinear integer programming formulation to reduce the number of decision variables, improving solve time.
 
-\subsection{Constraining the Decision Space}
+This section begins with an overview of the layout selection problem and the prior formulation of Bixby, Kennedy, and Kremer.
+It then details the modifications made in \FormatDecisions{}.
+It concludes with six experiments that illustrate the model in action.
 
-This optimization problem can be formulated as a graph problem in which nodes represent using a format for a computation and the edges represent conversions between formats, as shown by Kennedy and Kremer in~\cite{kennedy1998automatic}.
-Then, nodes and edges are assigned weights based on the cost of using that format or making that conversion. 
-In this formulation, the shortest path represents the optimal set of formats and conversions to use.
+\subsection{The Layout Selection Problem}
 
-Figure~\ref{graphModel} shows the constraints used to model the View \verb.F. from Listing~\ref{FormatDecisions3MM}.
-The variables of this optimization problem are boolean decision variables representing the possible format choices. 
-For this example, there are 10 total decision variables: 2 for the input formats, 2 for each computation, and 2 for the output formats.
+Layout selection is a decision problem.
+It asks: Given an array and a series of $N$ loop nests, what data layout should the array have during each loop nest to maximize performance?
+Valid answers come as a list of $N+1$ layouts, one to use for each loop nest and one for the array to be in at the end.
+For an isolated loop nest, the optimal answer is usually evident from a visual inspection of the code; the best layout is the one that matches the layout to the access order.
+However, when considering even two loop nests in sequence, the optimal choice is no longer statically evident.
+This is because the benefit of using the optimal layout for a loop nest must be weighed against the cost of converting the data from one layout to another.
+The difficulty of this comparison lends itself to automation.
 
-At the beginning, the only imposed constraint is that a View can only have one format at a time, indicated by the red, undirected edges among the nodes in Figure~\ref{graphModel:1}.
-Algebraically, this means that the sum of the variables for a specific computation must sum to 1. 
+Automating the layout selection problem, like many other decision problems, follows a two-step process: generate a set of valid solutions, then search the set for the best one.
+Different problems operationalize these two steps in different ways, but a common approach is to model the decision problem as an integer linear programming (ILP) problem.
+An ILP problem consists of a set of integer variables representing decision components, linear constraints over those variables representing the relationships between parts of the decision, and a linear objective function representing the costs of making different choices.
+The solution to an ILP problem is a mapping of variables to values that satisfies the constraints and minimizes the objective function.
+Once the solution to the ILP model has been identified, it can be mapped back to an optimal answer to the original decision problem.
 
-As decisions are registered, constraints are added that set the appropriate decision variables to 1, indicated by the green, outlined nodes in Figures~\ref{graphModel:2} and~\ref{graphModel:3}. 
-Because of the single-format constraints, we also know that the other decision variables for those computations must be set to 0, indicated by dark grey nodes.
+Bixby, Kennedy, and Kremer (BKK) develop such a formulation for the layout selection problem~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic}.
+They use a restricted type of ILP problem, known as a 0--1 ILP problem, that only uses binary variables.
+Because the variables can only have the values 0 or 1, they can be conceptualized as on-off ``switches.''
+Their formulation uses two types of variables: layout switches and remapping switches.
+For each loop nest, or ``phase'', there is one layout switch for each possible layout.
+Because an array has exactly one layout at a time, one and only one switch can be on for each phase.
+Remapping switches represent the layout transformations that occur between phases of the program.
+At each remapping point, there is one switch for each possible layout transformation.
+As with layouts, only one remapping can occur at a time, so there will be one remapping switch turned on for each remapping point.
+Remapping switches are also constrained to match the layout switches.
+For example, if the row-major switch is turned on for both the first and second phase, the row-to-column-major remapping switch cannot be turned on.
 
-When it comes time to solve the model, the input format variables are set based on the actual format of the data at solve time. This is shown with the green, outlined rhombus node in Figure~\ref{graphModel:4}.
+Using this ILP model, valid solutions to the layout selection problem are represented by constraint-satisfying configurations of the switches.
+For a $D$-dimensional array over $N$ loop nests, there are $D!*(N+1)$ such valid solutions, some better than others.
+The objective function makes it possible to compare the quality of different solutions, ultimately leading to the best possible choice.
+In the BKK formulation, the objective function is a sum of products, with one term for each switch.
+Each layout variable is multiplied by a coefficient representing the estimated cost of using that layout for that phase.
+Similarly, each remapping variable is multiplied by a coefficient representing the estimated cost of performing that layout transformation.
+These cost estimates only contribute to the objective function value when their associated switches are turned on.
+The configuration of switches that minimizes the objective function corresponds to a solution to the layout selection problem that should provide the best performance.
+
+The accuracy of a solution relies on the accuracy of the model used to select it.
+For the layout selection problem, the most important factor is the accuracy of the cost coefficients.
+In the BKK formulation, the cost coefficients are generated using a static performance model.
+Thus, the quality of their layout selection system is entirely determined by the quality of this performance model.
+Because the BKK performance model is static, each new machine requires a new and unique performance model be added to the system.
+This limits the system's portability.
 
 
 
 
-\begin{figure}
-	\centering
-	\begin{subfigure}[t]{0.3\columnwidth}
-		\includegraphics[page=1,width=\columnwidth]{ModelProgression.pdf}
-		\caption{Initial state of the optimization problem.}\label{graphModel:1}
-	\end{subfigure}
-	\hspace{0.03\columnwidth}
-	\begin{subfigure}[t]{0.3\columnwidth}
-		\includegraphics[page=2,width=\columnwidth]{ModelProgression.pdf}
-		\caption{After registering that F should be row-major during the second computation.}\label{graphModel:2}
-	\end{subfigure}
-	\hspace{0.03\columnwidth}
-	\begin{subfigure}[t]{0.3\columnwidth}
-		\includegraphics[page=3,width=\columnwidth]{ModelProgression.pdf}
-		\caption{After registering that F should be column-major during the third computation.}\label{graphModel:3}
-	\end{subfigure}
+The model \FormatDecisions{} uses to solve the layout selection problem is a modified version of the BKK formulation.
+There are three key differences.
+First, the model is solved at runtime, rather than as part of a programming tool, using microbenchmarking results to inform the cost coefficients.
+Second, the model uses an alternative approach to selecting candidate data layouts.
+Third, the model uses a nonlinear objective function.
+
+
+
+\subsection{Runtime Solving and Microbenchmarking}
+
+Where the BKK model is incorporated into a static, pre-compilation programming tool, \FormatDecisions{} solves the layout selection problem at runtime.
+Because the model is solved at runtime, \FormatDecisions{} gains two sources of information not present in the BKK formulation.
+First, \FormatDecisions{} has access to program parameters, like loop bounds and array sizes that are not available to the static BKK system.
+Second, \FormatDecisions{} is able to more accurately estimate the costs of different data layouts by incorporating microbenchmarking results into the objective function.
+These microbenchmarks are run as part of the program's execution, so they will be tuned to the architecture, system, and even the specific node on which the program runs.
+While runtime solving can incorporate previously unavailable information, it comes with runtime overhead.
+This runtime overhead must be outweighed by the performance improvement of the layout optimization, so the smaller the model, the better.
+The second and third modifications are motivated by this need for a quick model, but first I turn to the runtime microbenchmarking.
+
+\todo{write about microbenchmarking}
+
+\FormatDecisions{} uses runtime microbenchmarking to estimate the costs of using and converting among the candidate layouts. 
+The results of the microbenchmarking are incorporated into the model through the coefficients on the decision variables in the objective function.
+The approach considers two types of costs: use costs and conversion costs.
+Use costs represent the anticipated execution time associated with accesses to the data during the computation itself.
+Conversion costs represent the anticipated execution time associated with converting from one format to another in between phases.
+They use different approaches to determine their contributions to the objective function.
+
+Use cost determination is access-based and proceeds through each kernel (phase) in the loop chain.
+First, the kernel is symbolically evaluated and accesses to the View being modeled are isolated.
+For each access, one term will be added for each candidate layout, estimating the cost of making that access with the candidate layout.
+This estimate is the product of the microbenchmarking time and the number of loop iterations that make the access.
+The microbenchmark is selected to match the traversal order of the access using that layout.
+
+Collapsing the access, schedule, and candidate layout into the traversal order allows microbenchmark results to be reused for different variables. 
+For example, for a constant schedule, the access \verb.A(i,j). in row-major layout has the same traversal order as the access \verb.A(j,i). in column-major layout.
+Thus, their performance can be modeled with the same microbenchmark result. 
+By reusing a single timing result for multiple decision variables, the overall time necessary to run the decision model is reduced.
+
+The microbenchmarking results from the use cost estimation can be reused further to estimate conversions costs.
+The key insight here is that a conversion from one format to another is itself a computation and can be modeled as such.
+The conversion computation makes one access to data in the source layout, and one access to data in the destination layout. 
+Thus, the conversion cost is the sum of these two accesses.
+
+
+\begin{lstlisting}[caption={Algorithm for generating the objective function's use cost terms.}]
+SumExpression estimate_use_costs(knls, modeledView, candidateLayouts) {
+	SumExpression useCosts();
+
+	for knl in knls:
+	  for access in knl.evaluate_symbolically():
+		  if access.view == modeledView:
+			  for layout in candidateLayouts:
+				  traversalOrder = calc_traversal_order(knl.schedule, access.argOrder, layout);
+					accessTime = time_microbenchmark(traversalOrder)
+					costCoefficient = accessTime * knl.numIterations;
+
+					decisionVar = LayoutVariable(knl, layout);
+					costTerm = MultExpression(costCoefficient, decisionVar);
+					useCosts.add(costTerm);
 	
-	\begin{subfigure}[t]{0.3\columnwidth}
-		\includegraphics[page=4,width=\columnwidth]{ModelProgression.pdf}
-		\caption{After the input format has been set and before the problem is solved. The model picks the output format and the format for knl1.}\label{graphModel:4}
-	\end{subfigure}
-	\hspace{0.03\columnwidth}
-	\begin{subfigure}[t][0.15\columnwidth][b]{0.4\columnwidth}
-		\begin{align*}
-			x_{(F,row,in)} &+ x_{(F,col,in)} = 1 \\
-			 \wedge \ x_{(F,row,knl1)} &+ x_{(F,col,knl1)} = 1 \\
-			\wedge \ x_{(F,row,knl2)} &+ x_{(F,col,knl2)} = 1 \\
-		  \wedge \ x_{(F,row,knl3)} &+ x_{(F,col,knl3)} = 1  \\
-			\wedge \ x_{(F,row,out)} &+ x_{(F,col,out)} = 1 \\
-			\wedge \ x_{(F,row,knl2)} = 1 \ &\wedge \ x_{(F,col,knl3)} = 1 \\
-			\wedge \ x_{(F,row,in)}& = 1
-		\end{align*}
-		\caption{The algebraic representation of the constraints present when the problem is solved.}\label{graphModel:5}
-	\end{subfigure}
-
-	\caption{Graphical representation of the layout optimization problem for a View in \textsc{3mm}. Nodes represent possible format choices and edges represent format conversions. User choices constrain the possible paths through the graph.}\label{graphModel}
-\end{figure}
-
-\subsection{Constructing the Objective Function}
-
-The objective function for the model estimates the runtime performance of different format choices by considering the costs of format uses and format conversions.
-
-Each View reference in the computation contributes one term to the objective function for each possible data layout. This means that the reference \verb.F(i2,i1). in \verb.knl3.  contributes two terms.
-The first term,  $c * x_{(F,row,knl3)}$,  represents the cost of that reference if \verb.F. were in row-major order. 
-The second term, $c^\prime * x_{(F,col,knl3)}$  represents the cost of that reference if \verb.F. were in column-major order.
-Because \verb.F. is not referenced in the first kernel, the objective function does not contain linear terms for either $x_{(F,row,knl1)}$ or $x_{(F,col,knl1)}$.
-However, these decision variables appear in terms for format conversion costs.
-
-Because a format conversion depends the format coming in and going out of the conversion, conversion cost terms contain two decision variables.
-For example, consider the conversion step between \verb.knl1. and \verb.knl2..
-There are two possible conversions to consider: row-major to row-major and column-major to row-major. 
-Converting from row-major to row-major requires no action, so we  find the term $0 * x_{(F,row,knl1)} * x_{(F,row,knl2)}$ in the objective function.
-Converting from column-major to row-major does require a reformatting, introducing the term $c^{\prime\prime} * x_{(F,col,knl1)} * x_{(F,row,knl2)}$.
-
-Once the objective function is constructed, we can search for the format choices that minimize it, but first we need to determine the actual values for the cost coefficients.
-
-\subsection{Determining Cost Coefficients}
-
-It is generally possible to determine analytically if a kernel's data access would perform better with one layout or another; stride one accesses are preferable.
-It is much more difficult to weigh the magnitude of this benefit against the cost of converting from one layout to another. 
-Of course, there are useful heuristics, but model accuracy requires the incorporation of system-specific profiling information. 
-Two types of costs need estimation: use costs, which represent the estimated cost of using a particular layout for a kernel, and conversion costs, which represent the cost of converting between formats.
-
-Modeling the performance of a data access depends on three pieces of information: the nesting order of the kernel containing the access, the order of the dimensions in the View's layout, and the order of the arguments in the access.
-Thus, the function we must construct to do this modeling will be parameterized by these attributes.
-The nesting order is known at compile-time, as it is encoded in the kernel policy.
-The access' argument order is gathered using RAJALC symbolic evaluation, so is not available until runtime.
-Finally, because we are modeling the impact of using different layouts, this variable will also be changed at runtime.
-
-Here, two related concerns emerge. 
-First, because the profiling is executed at runtime, it is desirable to run as few profiling loops as possible to minimize overhead.
-Second, because any modeling functions incorporated into RAJA are written and compiled before the runtime symbolic evaluation gathers the argument order, the modeling function cannot use the symbolic evaluation results to construct the profiling kernel. 
-Instead, the profiling function must be constructed ahead of time to be capable of modeling an arbitrary access.
-Thankfully, these problems can be addressed as a pair.
-The approach here partitions the space of accesses, viewed as triples of the form $(nesting,layout,argument)$, into equivalence classes based on their expected performance characteristics.
-Then, each equivalence class can be modeled using just one of its entries.
-
-% plural bc me and the reader
-Given a data access to classify, we begin by determining the nesting, layout, and argument orders.
-The nesting order is found in the policy of the kernel containing the data access.
-The values of the nesting order indicate which dimension of the iteration space each level of the loop nest will traverse. 
-The argument order for a data access is the mapping between the dimensions of the iteration space and the dimensions of the data. 
-For example, the argument order $(2,0)$ indicates that dimension 2 of the iteration space is used to index dimension 0 of the data, and that dimension 0 of the iteration space is used to index dimension 1 of the data.
-Finally is the layout order, which is varied based on what layout the system is modeling. 
-This ordering indicates the stride order of the dimensions.
-For example, the layout order $(2,0,1)$ is stride-1 in the first dimension and has the largest stride in the second.
-
-Figure~\ref{accessOrder} provides an overview of the classification process.
-
-The first step is to normalize the argument order based on the layout order.
-This process answers the question ``What argument order results in the same access pattern when using the canonical layout order?''
-For example, consider the access $A(i_0,i_2,i_1)$ where $A$ has the layout order $(2,0,1)$ and the kernel has nesting order $(2,1,0)$.
-If $A$ were to have the layout order $(0,1,2)$, what would the argument order need to be to have the same access pattern? 
-If we permute the arguments by the layout order, we get our answer: $A(i_1, i_0, i_2)$.
-So our layout-normalized argument order would be $(1,0,2)$. 
-
-The second step is to normalize based on the kernel order. 
-This process answers the question ``What argument order results in the same access pattern when using the canonical nesting order?''
-This is done by identifying the position of each layout-normalized argument in the nesting order. 
-Using the kernel order $(2,1,0)$ from above, We get a fully normalized access order of $(1,2,0)$.
-
-All data accesses with the same fully normalized order are modelled using the same modeling kernel. 
-This kernel is constructed with a fixed policy and argument order so that one lambda and kernel policy can be used for modeling each layout. 
-
-
-\begin{figure*}
-% chktex-file 44
-\begin{subfigure}[b]{0.52\columnwidth}
-\begin{lstlisting}
-View2D A(a_data, rowMajor); 
-View2D B(b_data, colMajor); 
-View2D C(c_data, rowMajor);
-
-auto mmLam = [&](auto i0, auto i1, auto i2) {
-  C(i0,i1) += A(i0,i2) * B(i2,i1);
-};
-  
-using Pol012 = KernelPolicy< 
-  statement::For<0,loop_exec, // for i
-	  statement::For<1,loop_exec, // for j
-		  statement::For<2,loop_exec, // for k
-			  statement::Lambda<0>
->>>>;
-using Pol201 = KernelPolicy< 
-	statement::For<2,loop_exec, // for k
-		statement::For<0,loop_exec, // for i
-			statement::For<1,loop_exec, // for j
-				statement::Lambda<0>
->>>>;
-
-auto knl1 = make_kernel<Pol012>(segs, mmLam);
-auto knl2 = make_kernel<Pol201>(segs, mmLam);
+	return useCosts;
+}
 \end{lstlisting}
-\caption{Two kernels implementing matrix multiplication using different execution policies. The change in policy is equivalent to exchanging the loop nest order.}\label{accessOrder:code}
+
+\begin{lstlisting}[caption={Algorithm for generating the objective function's conversion cost terms.}]
+SumExpression estimateConversionCosts(knls, modeledView, candidateLayouts) {
+	SumExpression conversionCosts();
+
+	for inputLayout in candidateLayouts:
+		for outputLayout in candidateLayouts:
+			readTime = timeMicrobenchmark(defaultSchedule, defaultArgOrder, inputLayout);
+			writeTime= timeMicrobenchmark(defaultSchedule, defaultArgOrder, outputLayout);
+			costCoefficient = (readTime + writeTime) * modeledView.size();
+
+			for inPhase in 0 to numKnls:
+				outPhase = inPhase + 1;
+				inVar = LayoutVariable(inPhase, inputLayout);
+				outVar = LayoutVariable(outPhase, outputLayout);
+				costTerm = MultExpression(inVar, outVar, costCoefficient);
+				conversionCosts.add(costTerm);
+	
+	return conversionCosts;
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Algorithm for microbenchmark timing. Implementation is shown for two-dimensional case. Actual implementation uses template metaprogramming to generalize the dimensionality.}]
+SumExpression timeMicrobenchmark(scheduleOrder, argumentOrder, layoutOrder) {
+	static std::map<...> cache; // reuse results from previous microbenchmarking
+
+  normalizedLayoutOrder = normalize(scheduleOrder, argumentOrder, layoutOrder);
+
+	if (cache[normalizedLayoutOrder] != 0) {
+		return cache[normalizedLayoutOrder];
+	}
+
+	idx_t n = pow(modelProblemSize, 1/2.0);
+
+	//allocate memory and create Views
+	double* data1 = new double[modelProblemSize];
+	double* data2 = new double[modelProblemSize];
+	View2D arr1(data1, normalizedLayoutOrder);
+	View2D arr2(data2, normalizedLayoutOrder);
+
+	//fill Views
+	for(int i = 0; i < modelProblemSize; i++) {
+		data1[i] = std::rand();
+		data2[i] = std::rand();
+	}
+
+	using Policy = NestingPolicy<2>;
+
+	auto lam = [=](auto i, auto j) {
+	  arr2(i,j) = arr1(i,j);
+	};
+	auto segments = make_tuple(RangeSegment(0,n), RangeSegment(0,n));
+
+	auto knl = make_kernel<Policy>(lam, segments);
+
+	startTimer();
+	knl();
+	elapsed = stopTimer();
+
+	cache[normalizedLayoutOrder] = elapsed;
+	return cache[normalizedLayoutOrder];
+}
+\end{lstlisting}
+
+\todo{normalizing access order listing}
+
+Because the cost of conversion does not change based on the number of accesses to the data, these terms can be generated without reference to their surrounding computations.
+Furthermore, they can be constructed while reusing the microbenchmarking results from the use cost estimation.
+This is because a conversion from one layout to another can naturally be viewed as a kernel with two accesses: one access to data in the source layout and one to data in the destination layout.
+Thus, the cost coefficient becomes the size of the array multiplied by the sum of the two access estimates.
+
+
+\subsection{Candidate Layout Selection}
+
+The second modification refines how the model determines which layouts to include as candidates for selection.
+The BKK formulation does not detail how their model makes this choice, but only discusses two-dimensional data, where there are only two possible orderings.
+For higher-dimensional data, a simple option is to fully enumerate the possible layouts.
+For two dimensional data, this gives two options; for three dimensional, six; for four, 24.
+As the dimensionality increases, the number of layouts increases dramatically, and with it the modeling time.
+Thus, an alternative formulation for selecting candidate layouts is needed.
+
+Rather than using all $D!$ possible layouts, \FormatDecisions{} generates its set of candidate layouts using a seed set and a generating function.
+The seed set is a small set of layouts which is expanded to a larger, final set of candidates using the generating function.
+The seed set includes the original layout of the data, any layouts the user provides as part of registered decisions, and any layouts that \FormatDecisions{} calculates to match the access orders within the loop nests.
+The generating function takes this set of seed layouts and generates the final set of candidates.
+The generating function is user-configurable, but the default function is repeated rotation.
+Rotating a layout means shifting each dimension to the right and moving the rightmost index to the leftmost position.
+For example, repeatedly rotating the layout $(0,1,2)$ produces the layout $(2,0,1)$, then $(1,2,0)$, and finally $(0,1,2)$. 
+Using this scheme, the number of candidate layouts is reduced from $O(D!)$ to $O(D)$, further reducing modeling time.
+
+Repeated rotation was selected as the generating function for a confluence of reasons.
+First, a good assistant surfaces options that are not always initially considered, so the generating function should produce candidate layouts that are not present in the seed set.
+This excludes the identity transformation.
+Second, different architectures perform better with different stride lengths.
+While a CPU will do well with low-stride accesses, a GPU will perform better with large-stride accesses.
+Because repeated rotation generates options where every dimension shows up once in each position, it is guaranteed to produce a wide range of stride lengths.
+Finally, rotation is a staple, comprehensible transformation with transparent behavior.
+This makes for easier reasoning about the model's decisions.
+While repeated rotation is the default generating transformation, the user can supply an arbitrary generating function as long as it maps containers of layout permutations to containers of layout permutations.
+
+\subsection{Nonlinear Objective Function}
+
+Minimizing solve time also led to the third key difference between the BKK formulation and the \FormatDecisions{} formulation: the use of a nonlinear objective function.
+Execution time attributable to the ILP model comes from two sources: problem initialization (setup), and objective function minimization (solve).
+The setup phase initializes the objects for the space of constrained decision variables and the objective function.
+The more decision variables and constraints, the longer the setup phase.
+The solve phase applies the objective function to the decision space and identifies the minimum point.
+This too scales with the number of decision variables and constraints.
+Using a nonlinear objective function can eliminate the majority of the decision variables in the problem.
+While search time per decision variable increases with this scheme, the overall model time decreases significantly.
+
+The nonlinear formulation reduces modeling time by completely eliminating remapping variables.
+Recall that the BKK formulation uses two types of decision variables in its ILP model: layout variables and remapping variables.
+Further, recall that the model constraints ensure the remapping variables between two phases are matched to the layout variables for those phases.
+Given these constraints, the remapping variables are completely determined by the layout variables; 
+if we know the values of the layout variables, we can always reconstruct the values of the remapping variables.
+So then what is the purpose of the remapping variables? 
+Simply, it is to incorporate the \textit{cost of remapping} into the linear objective function.
+Because there are remapping variables for each pair of layouts, a model with $O(N)$ layout variables will need $O(N^2)$ remapping variables.
+As a result, these faux variables end up dominating the entire model and bloat execution time.
+
+Remapping variables are eliminated using a replacement scheme. 
+Because their values are fully determined by the layout variables, remapping variables in the decision space and constraints containing them can be removed without incident.
+This only leaves the terms containing remapping variables in the objective function.
+These are replace with equivalent terms that encode the removed constraints.
+A remapping variable can only be switched on when the layout variables corresponding to its input and output are switched on.
+This is a familiar operator: logical and––or in the realm of boolean algebra, multiplication.
+Symbolically, $remap_{rowmjr \rightarrow colmjr}^{phase1 \rightarrow phase2} = layout_{rowmjr}^{phase1} * layout_{colmjr}^{phase2}$.
+Thus, a replacement scheme can replace remapping variables in the objective function with products of layout variable.
+This produces a nonlinear function, as it multiplies variables by other variables, but reduces the number of decision variables in the problem by a square factor.
+
+
+\subsection{An Example Selection Problem}
+
+An demonstration of the layout selection problem and the approach to solve it is instructive.
+Consider the loop chain in Listing~\ref{SelectionExampleCode}, which calculates a series of matrix multiplications.
+The layout selection problem in this subsection will target the \verb.A. View.
+We construct the constrained decision space, then use microbenchmarking to construct the objective function.
+
+The decision space construction starts with the selection of the candidate layout $L$.
+For two-dimensional problems, the two candidates are row-major and column-major.
+Within the system, these are represented as dimensional orderings--$(0,1)$ and $(1,0)$--but for clarity's sake, we use their names here: $L=\{row,col\}$.
+
+Once the candidate layouts have been identified, we can create the layout decision variables.
+For each phase of the computation, there is one variable for each layout, plus to represent the input and output layouts.
+Thus, the full list of layout variables is: $[k_{row}^{0}, k_{col}^{0}, k_{row}^{1}, k_{col}^{1},k_{row}^{2}, k_{col}^{2},k_{row}^{3}, k_{col}^{3},k_{row}^{4}, k_{col}^{4}]$.
+The subscript indicates the layout while the superscript indicates the phase. 
+The 0 phase represents the input layout, while the $N+1$ phase represents the output layout.
+
+The last step in creating the constrained decision space is the constraint expression. 
+First, variables are constrained to be either zero or one. 
+Thus, for each decision variable $k$, we add the constraint $0 \leq k \leq 1$.
+Next, for each phase, exactly one layout will be selected. 
+Thus, for each phase $i$, we add the constraint $\sum_{\ell \in L} k_\ell^{i} \ \ = 1$.
+Optionally, a constraint can be added to match the input and output format.
+In this circumstance, for each candidate layout $\ell$, we add $k_\ell^{0} = k_\ell^{N+1}$.
+Finally, additional constraints are added based on decisions registered by the user, setting the appropriate variable to 1.
+Figure~\ref{SelectionExampleConstrainedSpace} shows the full description of the constrained space for the example.
+
+
+Constructing the objective function begins with estimating the cost of accesses to the modeled View.
+Starting with the first kernel, symbolic evaluation identifies one access, \verb.A(i,k)..
+Modeling this access will contribute terms for the decision variables $k_{row}^1$ and $k_{col}^1$.
+
+
+\todo{figure that shows this process graphically}
+\begin{figure}
+\begin{subfigure}{0.4\columnwidth}
+\begin{lstlisting}[caption={Example loop chain. The selection problem targets the \texttt{A} array. Code is shown using standard C++ for loops rather than RAJA kernels for the reader's familiarity.},label=SelectionExampleCode]
+//knl1
+for (i = 0; i < N; i++) {
+	for(j = 0; j < N; j++) {
+		for(k = 0; k < N; k++) {
+			T1(i,j) += A(i,k) * B(k,j);
+		}
+	}
+}
+//knl2
+for (i = 0; i < N; i++) {
+	for(j = 0; j < N; j++) {
+		for(k = 0; k < N; k++) {
+			T2(i,j) += T1(i,k) * A(k,j);
+		}
+	}
+}
+//knl3
+for (i = 0; i < N; i++) {
+	for(j = 0; j < N; j++) {
+		for(k = 0; k < N; k++) {
+			T3(i,j) += A(k,i) * T2(k,j);
+		}
+	}
+}
+
+\end{lstlisting}
 \end{subfigure}
-\hspace{0.01\columnwidth}
-	\begin{subfigure}[b]{0.45\columnwidth}
-		\begin{center}
-			\begin{tabular} {|c|c|c|}
-\hline{}
-Kernel & Nesting Order \\ \hline
-knl1 & (0,1,2) \\
-knl2 & (2,0,1) \\
-\hline
-			\end{tabular}
 
-			\vspace{5px}
+\begin{subfigure}{\columnwidth}
+Data Dimensionality: $D$
 
-			\begin{tabular} {|c|c|c|}
-				\hline 
-				View & \makecell{Argument \\ Order} & \makecell{Layout \\ Order} \\  \hline 
-				A & (0,2) & (0,1) \\ 
-				B & (2,1) & (1,0) \\
-				C & (0,1) & (0,1) \\
-				\hline
-			\end{tabular}
+Candidate Layouts: $L$
 
-\vspace{5px}
+Phases: $P$
 
-			\begin{tabular} {|c|c|}
-				\hline
-				Information & Source \\ \hline 
-				Argument Order & \makecell{Symbolic \\ evaluation}  \\ \hline
-				Layout Order & \makecell{Varied for \\ modeling}\\ \hline
-				Nesting Order & \makecell{Template \\parameter} \\
-				\hline
-			\end{tabular}
-		\end{center}
-		\caption{The information used to calculate access orders and how they are collected. Nesting orders come from the policies on lines 12--30, argument orders from the View references on line 9, and layout orders from the data initialization on lines 1--6.}\label{accessOrder:orders}
-	\end{subfigure}
+Layout Variables: $k_{layout}^{phase}$.
 
-	\vspace{10px}
+Remapping Variables: $r_{inLayout \rightarrow outLayout}^{inPhase \rightarrow outPhase}$. 
 
-	\begin{subfigure}[b]{\columnwidth}
-		\begin{center}
-		Argument Order $\xrightarrow[\text{Layout Order}]{permute}$ Layout-Normalized Order
+One-Format Constraints: For each phase $p$, $\sum_{\ell \in L} k_{\ell}^{p} \ \ = 1$.
 
-		Layout-Normalized Order $\xrightarrow[\text{Nesting Order}]{indexof}$ Access Order
+Binary Variable Constraints: For each phase $p$ and layout $\ell$, $0 \leq k_{\ell}^{p} \leq 1$.
+\caption{ILP model parameters, variable scheme, and constraint schemes.}
+\end{subfigure}
 
-%chktex-file 13
-\begin{tabular}{c c}
-		knl1, A: $(0,2)$ $\xrightarrow[(0,1)]{permute}$ $(0,2)$ $\xrightarrow[(0,1,2)]{indexof}$ $(0,2)$. & knl2, A: $(0,2)$ $\xrightarrow[(0,1)]{permute}$ $(2,0)$ $\xrightarrow[(2,0,1)]{indexof}$ $(0,1)$. \\
-		knl1, B: $(2,1)$ $\xrightarrow[(1,0)]{permute}$ $(1,2)$ $\xrightarrow[(0,1,2)]{indexof}$ $(1,2)$. & knl2, B: $(2,1)$ $\xrightarrow[(1,0)]{permute}$ $(1,2)$ $\xrightarrow[(2,0,1)]{indexof}$ $(2,0)$. \\
-		knl1, C: $(0,1)$ $\xrightarrow[(0,1)]{permute}$ $(0,1)$ $\xrightarrow[(0,1,2)]{indexof}$ $(0,1)$. & knl2, C: $(0,1)$ $\xrightarrow[(0,1)]{permute}$ $(0,1)$ $\xrightarrow[(2,0,1)]{indexof}$ $(1,2)$. \\
-		
-		
-\end{tabular}
-		\end{center}
-	\caption{The calculation process. The first transformation normalizes different layouts. The second normalizes different nesting orders. The resulting tuple represents the canonical data access with the same performance behavior. References with the same access order can be modeled with the same microbenchmark.}\label{accessOrder:calc}
-	\end{subfigure}
+\begin{subfigure}{\columnwidth}
 
-	
-	\caption{Calculating access orders for the View references in two matrix multiplication kernels.~\ref{accessOrder:orders} shows the information extracted from~\ref{accessOrder:code}.~\ref{accessOrder:calc} shows how this information is used to estimate multiple reference costs with the same microbenchmark. }\label{accessOrder}
+$\{[k_{row}^{0}, k_{col}^{0}, k_{row}^{1}, k_{col}^{1},k_{row}^{2}, k_{col}^{2},k_{row}^{3}, k_{col}^{3},k_{row}^{4}, k_{col}^{4}] \vert 
+k_{row}^0 + k_{col}^0 = 1 \land 
+k_{row}^1 + k_{col}^1 = 1 \land 
+k_{row}^2 + k_{col}^2 = 1 \land 
+k_{row}^3 + k_{col}^3 = 1 \land 
+k_{row}^4 + k_{col}^4 = 1 \land 
+0 \leq k_{row}^{0} \leq 1 \land
+0 \leq k_{col}^{0} \leq 1 \land
+0 \leq k_{row}^{1} \leq 1 \land
+0 \leq k_{col}^{1} \leq 1 \land
+0 \leq k_{row}^{2} \leq 1 \land
+0 \leq k_{col}^{2} \leq 1 \land
+0 \leq k_{row}^{3} \leq 1 \land
+0 \leq k_{col}^{3} \leq 1 \land
+0 \leq k_{row}^{4} \leq 1 \land
+0 \leq k_{col}^{4} \leq 1 \}
+$
+\caption{Description of constrained decision space for example loop chain.}\label{SelectionExampleConstrainedSpace}
+\end{subfigure}
 
-\end{figure*}
+\caption{Graphical representation of the layout selection problem as solved by the \FormatDecisions{} system.}
+\end{figure}
+ the View \verb.A. in Listing~\ref{SelectionExampleCode} 
 
+\subsection{Six Parameters, Six Experiments}
 
-
-%%%%%%%%%%%%%%%%%%%%%%
-\section{RAJAPerf Benchmark Suite}\label{sec:Experiment1}
-
-The first evaluation experiment examines application performance and programmer productivity using benchmarks from the RAJA Performance Suite (RAJAPerf)~\cite{hornung2017raja}. 
-When selecting benchmarks for inclusion in the evaluation, there are three criteria.
-First, the benchmark needs to use multidimensional data. 
-Benchmarks that use only scalar and one-dimensional data cannot be optimized with \FormatDecisions{} because there is only one format to choose from.
-This criteria excludes 45 of the 63 benchmarks.
-Second, the benchmark must make at least one access that traverses its data with a stride not equal to 1. 
-Of the remaining 18, this excludes eight.
-Finally, benchmarks with equal iteration space and data space dimensionality are excluded. 
-This is to ensure enough data reuse to make conversion between formats worthwhile.
-This leaves two matrix multiplication-based benchmarks and three partial assembly benchmarks.
-However, because of the small extents in the partial assembly benchmarks, we focus on the \textsc{2mm} and \textsc{3mm} kernels.
-To this pair, we add an additional four benchmarks to RAJAPerf's Polybench~\cite{pouchet2012polybench} section: \textsc{correlation}, \textsc{covariance}, \textsc{doitgen}, and \textsc{symm}. 
-
-\textsc{2mm} solves the matrix expression $A*B*C$ using two matrix multiplications. 
-First, it computes $A*B$ and stores the results in a temporary array.
-Then this temporary result is multiplied by $C$.
-\textsc{3mm} solves a similar matrix expression $A*B*C*D$ using three matrix multiplications.
-It computes $A*B$, then $C*D$, then multiplies the results.
-\textsc{correlation} and \textsc{covariance}, as the names suggest, calculate the correlation and covariance matrix for the input data. 
-\textsc{correlation} has four loop nests and \textsc{covariance} has three.
-\textsc{doitgen} is a multiresolution analysis kernel while \textsc{symm} computes a symmetric matrix-multiplication.
-
-\begin{table}
-	\centering
-	%chktex-file 1
-	%chktex-file 8
-	\begin{tabular}{|c|c|c|c|c|}
-		\hline
-		Variant Name & Kernel Objects & Layout Changes & Chosen By & Written Using \\
-		\hline
-		\verb.RAJALC. & Yes & No & -- & -- \\
-		\verb.Hand_Layout. & Yes & Yes & User & No API \\
-		\verb.Format_Decisions. & Yes & Yes & User & API \\
-		\verb.Model_Choice. & Yes & Yes & Model & API \\
-		\hline
-	\end{tabular}
-	\caption{Benchmark variant descriptions.}\label{VariantDescription}
-\end{table}
-For each benchmark, I implement 4 variants and compare execution time and code length, shown in Table~\ref{VariantDescription}.
-\verb.RAJALC. implements the computations using the kernel objects discussed is Section~\ref{sec:kernelObjects}. 
-\verb.Hand_Layout. implements identified transformations without using \FormatDecisions. 
-Because this variant does not have any analysis overhead, I expect this variant to be the fastest.
-The \verb.Format_Decisions. variant uses \FormatDecisions to register the identified layout changes but does not use the model to look for other beneficial transformations.
-Last, \verb.Model_Choice. allows the decision model to make all layout choices without providing any user-identified transformations.
-
-\subsection{Performance Evaluation}\label{sec:systemDetails}
-All performance results in this paper were collected on a single node with a 44-core IBM Power9 CPU and 256GB of CPU memory. 
-I run with 22 threads on one socket to avoid transfers over a relatively slow inter-socket connection.
-All compilation used GCC version 8.3.1 with \verb.-O3. optimization.
-Figure~\ref{fig:speedups} reports the average speedup of the variants relative to the \verb.RAJALC. variant across 5 runs. 
-I run the kernels at three problem sizes.
-The default size for the RAJAPerf suite is SizeFactor=1, while SizeFactors 2 and 4 scale the problem size by 2 and 4, respectively.
-
-\begin{figure*}
-	\includegraphics[width=0.9\textwidth]{speedups.pdf}
-	\caption{Relative speedups of the different variants for different problem size factors. Speedup is calculated in reference to the RAJALC variant. Higher is better.}\label{fig:speedups}
-\end{figure*}
-
-For the \textsc{2mm} and \textsc{3mm} kernels, the performance of the three layout-changing variants are comparable. 
-For the standard (SizeFactor=1) problem size, the performance effects are minimal, with \verb.Hand_Layout. providing a 0.3\% and 0.6\% speedup to \textsc{2mm} and \textsc{3mm} respectively. 
-The \verb.Format_Decisions. variant provides a small 0.2\% speedup to \textsc{2mm} and 0.3\% to \textsc{3mm}, while the \verb.Model_Choice. variant shows a decrease in performance of 0.3\% and 1.3\%, respectively. 
-With the middle problem size (SizeFactor=2), the performance effects of layout transformations are greater. 
-For \textsc{2mm}, we see a 11.1\% speedup for the \verb.Hand_Layout. variant and 11.0\% for \verb.Format_Decisions. and \verb.Model_Choice. 
-For \textsc{3mm}, we see a similar pattern slightly modified by the higher modeling costs of the \textsc{3mm} kernel. \verb.Hand_Layout. gives a 8.3\% speedup, \verb.Format_Decisions. a 8.1\% speedup, and \verb.Model_Choice. a 7.6\% speedup.
-Finally, for the large problem size (SizeFactor=4), the results are similar.
-All three variants of \textsc{2mm} see a 8.4\% speedup, whereas the variants of \textsc{3mm} see a 8.0\%, 7.9\%, and 7.8\% speedup.
-
-For \textsc{correlation}, there is less variability across problem sizes. 
-For SizeFactors 1, 2, and 4, the \verb.Hand_Layout. variant sees speedups of 4.6\%, 7.6\%, and 8.6\%, respectively. 
-The \verb.Format_Decisions. variant does slightly better at 5.2\%, 8.6\%, and 9.6\%.
-\verb.Model_Choice. remains competitive at 4.9\%, 8.6\%, and 8.7\%.
-The \textsc{covariance} kernel performs similarly.
-The \textsc{doitgen} kernel sees relatively flat performance across problem sizes and variants. All speedups are within 1.1\% of the baseline.
-
-The \textsc{symm} kernel performs less consistently than the other kernels.
-Still, the effects of the \verb.Hand_Layout. and \verb.Format_Decisions. variants share the same direction.
-The standard problem size gives a 1.8\% speedup for \verb.Hand_Layout., a more significant speedup of 13.5\% for \verb.Format_Decisions., and a slowdown of 13.3\% for \verb.Model_Choice.. 
-We attribute this slowdown for the standard problem size to the smaller amount of computation in the \textsc{symm} kernel that can offset the cost of the performance modeling. 
-For SizeFactor=2, we see speedups across the board, at 3.2\%, 17.4\%, and 5.3\% respectively.
-Finally, for SizeFactor=4, \verb.Hand_Layout. and \verb.Format_Decisions. give speedups of 4.6\% and 17.5\% while \verb.Model_Choice. gives a speedup of 7.5\%.
-
-
-\subsection{Productivity Evaluation}
-
-To evaluate the productivity of \FormatDecisions{}, I report the source lines of code added or changed for each of the variants.
-This value is calculated by counting the number of line differences using python's \verb.Differ.. 
-I preprocess to remove all whitespace-only lines.
-Figure~\ref{PolybenchSLOC} shows the results.
-With the exception of \textsc{3mm} and \textsc{qmc}, using \FormatDecisions{} requires between 2 and 3$\times$ fewer code changes than implementing the transformations by hand. 
-When using the performance model to make the layout choices, this is reduced further, requiring 4 to 6$\times$ fewer code changes. 
-
-While the productivity benefit here is significant, \FormatDecisions{} is especially useful when making subsequent layout changes after the first. 
-Once a code has been changed to use \FormatDecisions{}, the change quantified in Figure~\ref{PolybenchSLOC}, further changes can be introduced with only a single line. 
-For example, manually tuning data layouts for a new machine amounts to a handful of reordered characters to describe the new layouts, the second argument in the calls on lines 13-16 of Listing~\ref{FormatDecisions3MM}. 
-Overall, by compressing the complexities of modifying data layouts, \FormatDecisions{} reduces the mental load on the programmer, freeing up capacity to explore more possible transformations.
+To illustrate the workings of the layout selection model, I present its use for six synthetic programs that each vary one parameter: loop count, loop depth, memory footprint, access count, user constraint count, and data dimensionality.
+Results are reported for two versions of the model.
+The ``Linear Model'' panels use the BKK formulation of the optimization problem.
+This means that it uses remapping variables, a linear objective function, and exhaustively enumerates the candidate layouts.
+The ``Nonlinear Model'' panels use the optimized \FormatDecisions{} formulation.
+This means that it does not use remapping variables, uses a nonlinear objective function, and uses the rotation heuristic for identifying candidate layouts.
+For each experiment, I break the modeling time into the time spent modeling different access patterns, the time spent initializing the decision space and objective function, and the time spent identifying the optimal point within the decision space. 
 
 \begin{figure}
-	\includegraphics[width=\columnwidth]{sloc.pdf}
-	\caption{Source lines of code modified (added, changed, or removed) relative to the  RAJALC variant. (Lower is better)}\label{PolybenchSLOC}  
+\includegraphics[width=0.5\columnwidth]{LoopCount.pdf}
+\caption{Changes in modeling time for different loop chain lengths.}\label{LoopCount}
 \end{figure}
-
-\section{Quantum Monte Carlo Simulation}\label{sec:miniQMC}
-In all but the simplest (and least interesting) quantum systems, solving the Schr\"odinger equation requires numerical approximation. 
-Quantum Monte Carlo algorithms have been developed as a solution to this problem of fast, accurate approximation.
-QMCPACK~\cite{kim2018qmcpack} is one application implementing this approach, and lead to the development of a computationally representative miniapp, called miniQMC~\cite{richards2018fy18}.
-
-As part of the evaluation of our contributions, we use \FormatDecisions{} to explore possible optimizations to miniQMC\@.
-Intending to illustrate the progression of the exploration, we present a chronology of attempted transformations.
-The results of our evaluation are mixed.
-We identify layout transformations that improve performance compared to not making transformations, but it is overall slower than a version that immediately executes the kernel objects rather than grouping them in a container.
-We show that this is due to the use of any containing object rather than any overhead caused by \FormatDecisions{} specifically.
-
-\subsection{The Determinant Update Kernel}
+The first experiment, shown in Figure~\ref{LoopCount}, shows the modeling time for loop chains with between one and eight loop nests.
+For this experiment, all loop nests are three-dimensional and make three accesses to two-dimensional arrays of $100\times100$ doubles. 
+No user constraints are added.
+This experiment illustrates the execution time savings of eliminating the remapping variables from the model.
+Using the linear model, because there are so many decision variables in the model, the majority of modeling time is spent in setup with as few as four loop nests (57\%).
+Overall, the nonlinear model is between $1.29\times$ and $2.63\times$ faster than the linear model in this experiment.
 
 \begin{figure}
-\begin{lstlisting}[caption={Main loopchain of the determinant update kernel. Note that the access/storage order here is reversed.},label={updateInvMatRef}]
-//tempMat = U^T * Ainv
-for(i = 0; i < dc; i++) {
-	for(j = 0; j < norb; j++) {
-		tempMat(i,j) = 0;
-		for(k = 0; k < norb; k++) {
-			tempMat(j,i) += U(i,k) * Ainv(j,k);
-		}
-	}
-}
-
-for(i = 0; i < dc; i++) {
-	tempMat(delay_list(i), i) -= 1;
-}
-
-//U = V * Binv
-for(i = 0; i < dc; i++) {
-	for(j = 0; j < norb; j++) {
-		U(i,j) = 0;
-		for(k = 0; k < norb; k++) {
-			U(j,i) += V(k,i) * Binv(j,k);
-		}
-	}
-}
-
-// A -= U * tempMat
-for(i = 0; i < dc; i++) {
-	for(j = 0; j < norb; j++) {
-		for(k = 0; k < norb; k++) {
-			Ainv(j,i) -= U(k,i) * tempMat(j,k);
-		}
-	}
-}
-\end{lstlisting}
+	\includegraphics[width=0.5\columnwidth]{NestDepth.pdf}
+	\caption{(Lack of) Changes in modeling time for different depths of loop nests.}\label{NestDepth}
 \end{figure}
+The second experiment, shown in Figure~\ref{NestDepth}, shows the modeling time for loop chains where loop nest depth ranges from two to four.
+Here, the loop chain contains three loop nests, and all other parameters are the same as the first experiment.
+Note that the modeling time is constant across the different nest depths. 
+This is because the performance model is data-oriented rather than loop-oriented: it seeks to model the performance of each access in the loop rather than the loop as a whole.
+The contribution of each access to the objective function is scaled by the number of iterations.
 
-miniQMC has four important kernels: determinant update, spline evaluation, Jastrow factors, and distance tables.
-Of these, the determinant update kernel is most important, as it both accounts for 30 to 50\% of computation time and is the source of the application's cubic scaling.
-The determinant update kernel is implemented by the \verb.DelayedUpdate. class.
-This class maintains four matrices and two vectors internally and uses one passed as arguments to the methods. 
-Once a sufficiently large number of updates have been collected, they are applied together with four loop nests.
-First is the matrix multiplication $tempMat = U^{\top} * Ainv$.
-Second is a one dimensional loop nest that updates $tempMat$.
-Third is the matrix multiplication $U = V * Binv$.
-Fourth and final is the matrix multiplication $Ainv -= U*tempMat$.
-Listing~\ref{updateInvMatRef} shows a reference implementation for this loopchain.
-
-A look at the second loop in the chain presents an early challenge: indirect accesses. 
-\verb.tempMat. is indexed by the indirect access expression \verb.delay_list(i).. 
-This type of access is not supported by the symbolic evaluation capabilities in RAJALC, meaning that the automated performance model cannot be used here.
-However, this limitation does not restrict the programmer's ability to explore layout changes without the help of the performance model. 
-For our experimentation, we use the `1 2 2'' shape, which simulates 128 atoms and 1536 electrons.
-
-\subsection{Identifying Profitable Transformations}
 \begin{figure}
-\begin{lstlisting}[caption={Different layout transformations selected as part of the miniQMC exploration.}, label={miniQMCChoices}]
-{ // RAJA baseline
-	knl1(); //tempMat = U^T * Ainv
-	knl2(); //tempMat(delay_list(i), i) -= 1;
-	knl3(); //U = V * Binv
-	knl4(); // A -= U * tempMat
-}
-{ // FormatDecisions baseline
-	auto dec = format_decisions(tie(U,V,tempMat,Ainv), 
-		knl1, knl2, knl3, knl4);
-	auto comp = dec.generate();
-	comp();
-}
-{// Fully enumerated version
-	auto dec = format_decisions(tie(U,V,tempMat,Ainv), 
-		knl1, knl2, knl3, knl4);
-	dec.set_format_for(Ainv, {0,1}, knl1);
-	dec.set_format_for(Ainv, {1,0}, knl4);
-	dec.set_format_for(U, {0,1}, knl1);
-	dec.set_format_for(U, {1,0}, knl3, knl4);
-	dec.set_format_for(tempMat, {1,0}, knl1);
-	dec.set_format_for(tempMat, {0,1}, knl4);
-	dec.set_format_for(V, {1,0}, knl3);
-	auto comp = dec.generate();
-	comp();
-}
-{ // Refined version
-auto dec = format_decisions(tie(U,V), 
-knl1, knl2, knl3, knl4);
-dec.set_format_for(U, {0,1}, knl1);
-dec.set_format_for(U, {1,0}, knl3, knl4);
-dec.set_format_for(V, {1,0}, knl3);
-auto comp = dec.generate();
-comp();
-}
-\end{lstlisting}
+\includegraphics[width=0.5\columnwidth]{Footprint.pdf}
+\caption{(Lack of) Changes in modeling time for different memory footprints.}\label{Footprint}
 \end{figure}
+\todo{Run with sizes based on filling cache.}
+The third experiment varies the size of the arrays accessed by the loop chain, shown in Figure~\ref{Footprint}.
+Like with the loop nest depth, the modeling time remains constant across the different sizes.
+The cause is similar; as the memory footprint increases, the only feature of the model that changes is the magnitude of the coefficients within the objective function.
 
-To begin the search for a profitable transformation sequence, I enumerate the accesses with orders that do not align with the schedule, transforming to a layout with a stride of one.
-These selections can be seen in Figure~\ref{miniQMCChoices}
-However, this complete enumeration is slower than a baseline \FormatDecisions{} version that makes no conversions at all, with a runtime of 27.28 seconds compared to the baseline's 23.63.
 
-To refine the transformation sequence, we note that the access to \verb.Ainv. in the final kernel does not change most iterations, as it does not use the innermost loop index. 
-The second transformation sequence uses this fact, making format choices only on Views that use the innermost index. 
-This version executes in 22.38 seconds, an improvement over the \FormatDecisions{} baseline. 
-Subsequent versions transforming only \verb.U. or \verb.V. indicate that this performance improvement is coming mainly from the transformations to \verb.U.
+\begin{figure}
+	\includegraphics[width=0.5\columnwidth]{AccessCount.pdf}
+	\caption{Changes in modeling time for different numbers of data accesses.}\label{AccessCount}
+\end{figure}
+\todo{explain the small, linear scaling of the cost estimation, and the negative scaling of the setup in the linear model}
+Next is the number of accesses made to the data within the loop body.
 
-\subsection{Proving Constness}
+\begin{figure}
+	\includegraphics[width=0.5\columnwidth]{ConstraintCount.pdf}
+	\caption{Changes in modeling time for different numbers of user-provided layout decisions.}\label{ConstraintCount}
+\end{figure}
+Fifth is the number of layout decisions the user provides. 
+Each additional layout decision adds one constraint, reducing the number of valid configurations. 
+Thus, the solving time is reduced, as there are fewer points to evaluate.
 
-While I am able to identify a transformation sequence that improves performance compared to the \FormatDecisions{} baseline, there is significant performance overhead compared to the RAJA baseline, 23.63 and 10.18 seconds respectively.
-The first possible cause to explore is overhead from initializing the \FormatDecisions{} object, registering transformations, and generating the final computation. 
-To explore this hypothesis, I return to the baseline implementation and wrap these components in an additional timer. 
-However, this timer clocks a vanishingly small contribution: 0.0022 seconds.
 
-If the overhead is not a product of the \FormatDecisions{} object itself, it must be from the computation object it generates.
-Regardless of what conversions are registered, this computation object is a fixed-length loop chain.
-Between each of the kernels from the computation itself is one converter kernel for each of the Views being considered as targets for conversions.
-When there are no conversions to make, these converters should quickly resolve to a no-op.
-To better understand their contribution to the overall execution time, I compare the baseline, which has four converters between each of the original kernels, with a version that has just one.
-Compared to the baseline's 23.63 seconds, this version takes 23.43.
-While an ever-so-slight reduction in execution time, it is not nearly enough to account for the overhead.
+\begin{figure}
+	\includegraphics[width=0.5\columnwidth]{DataDimensionality.pdf}
+	\caption{Changes in modeling time for data with different numbers of dimensions.}\label{DataDimensionality}
+\end{figure}
+Sixth and final is the dimensionality of the data, varying in Figure~\ref{DataDimensionality} from two to six, selected as the maximum for QCD\todo{is this the right thing? i don't remember what bronis said}.
+This has the most significant impact on execution time, and without reducing the set of candidate layout using the rotation heuristic, the execution reaches timeout before completing for four, five, and six dimensions.
+For the version using the rotation heuristic, the solve time scales linearly with the dimensionality because the number of decision variables increases linearly with the dimensionality.
+The cost estimation time scales faster than linearly, \todo{explain}.
 
-With the converters eliminated as a suspect, I am left only with the kernel container that holds the loop chain.
-I can create this container manually to exclude any possible influence of the \FormatDecisions{} code.
-With an execution that takes 23.50 seconds, there is a clue as to the underlying cause.
-Something about having the kernel objects in a container is affecting their performance.
-At first glance, it seems that something in the chain's execution is causing the problem.
-However, this is unlikely, as the chain's call operator resolves at compile time to just a sequence of calls to each of the kernels.
 
-I can confirm this with a version that creates the loop chain object, but does not use it to run the computation.
-This version takes 23.44 seconds, even though it, like the faster RAJA baseline, executes the kernel directly.
-This suggests that important compiler optimizations are no longer applied when the kernel objects are incorporated into another object. 
-However, when constructed with const references rather than by value, this performance reduction is removed.
+\section{Production System}
 
+The \FormatDecisions{} prototype lends itself to an adaptive production system.
+This section outlines such a potential system that uses representative training runs to entirely offload the overhead of running the decision model.
+The production version uses a single feature not present in the prototype: decision I/O.
+Specifically, to use the model results from a training run during a later production run, the system would need to be able to write out and read back in the model's layout decisions to persistent files 
+This is not a completely trivial feature, but it is not a significant challenge, and I will return to it after outlining the system's function.
+
+The production system would be run in one of two modes.
+In the first mode, meant to be run with smaller but representative inputs, the system runs the decision model for each loop chain it encounters, writing the final, comprehensive layout choices to file.
+In the second mode, meant to be used on the full production inputs, the system uses the layout choices produced by the training run.
+Because the training run writes the full set of layout decisions for each loop chain, no modeling is necessary and the loop chains can be executed immediately.
+
+Of course, it is not always possible to exercise all code paths with a single training run. 
+For this circumstance, I propose a hybrid ``learning'' mode.
+Meant to be run with full production inputs, it uses previous layout decision files when available and runs decision models for newly encountered loop chains.
+Like the training mode, it writes the decisions to file, so that later runs can reuse the results.
+With this scheme, newly encountered code paths will incur modeling costs for a single run, but not thereafter.
+
+Returning to the problem of decision I/O, the key insight is that each \FormatDecisions{} object has a unique type.
+Thus, the decisions can be indexed by the hash of its decision object type.
+This ensures that decisions for a GPU execution are not used for a CPU execution, as the \FormatDecisions{} object types contain the execution policy types of their constituent kernels.
+
+
+\section{Evaluation}
+
+I evaluate \FormatDecisions{} against 
 \section{Related Work}
-
-Early approaches to optimizing data locality use schedule transformations rather than data layout transformations. 
-Work incorporated into the SUIF compiler uses interchange, reversal, skewing, and tiling~\cite{wolf1991data}, whereas Fortran source-to-source approaches also use loop fusion~\cite{mckinley1996improving}.
-While schedule transformations avoid the overhead cost of layout conversion, their global nature can improve locality for one access while harming another.
-Nevertheless, schedule transformations remain a popular approach to optimizing data locality and parallelism, 
-especially through tiling techniques~\cite{bondhugula2008pluto,bertolacci2015parameterized,bondhugula2016diamond,bandishti2012tiling,unat2016tida}.
-
-In the domain of data layout transformations, early work in High Performance Fortran (HPF) and D compilers~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic} provide foundations for a variety of later approaches.
-Their framework follows a popular pattern: generate a space of possible choices, estimate the performance of different choices, and select an option using an ILP formulation. 
-The problem formulation used here is similar to theirs, although we do not use the data layout graph intermediate representation.
-Furthermore, where their model for cost estimation focuses on communication costs in a distributed context, our approach models on-node performance costs of cache misses.
-
-The polyhedral model, traditionally used for schedule transformations, is commonly leveraged for data layout transformations as well.
-With the rise of multicore chips, new strategies were needed to manage shared on-chip resources. 
-Work by Lu et al.~\cite{lu2009data} and Zhang et al.~\cite{zhang2011optimizing} develop layout optimization schemes based on the polyhedral model and use a combination of strip-mining, permutation, and padding transformations.
-
-
-Data layout transformation frameworks are also popular for heterogeneous programming systems, especially for stencil codes.
-Sung, Stratton, and Hwu~\cite{sung2010data} use data layout transformations to relieve pressure on memory controllers in structured grid applications by spreading data out across the address space based on the indexing behavior of the application.
-Henretty et al.~\cite{henretty2011data} develop a layout transformation and accompanying static analysis to address stream alignment conflicts for SIMD architectures.
-Jaeger and Barthou~\cite{jaeger2012automatic} present a strategy for generating stencil codes with optimal data layouts using a multi-padding layout transformation.
-Recognizing the need for specialized support for ever-changing chip structure, Majeti et al.~\cite{majeti2013compiler} develop a programmer (or autotuner) guided data transformation system.
-Built into the Habenero-C compiler, the meta-data provided by the user guides the generation of architecture-specific SOA, AOS, and SOAOS data layouts.
-Another approach by Kofler, Cosenza, and Fahringer~\cite{kofler2015automatic} convert AOS implementations to other data layouts for GPU applications automatically.  
-With the exception of Majeti et al., these approaches do not provide an interface to the developer, and without exception are compiler-based approaches.
-The \FormatDecisions{} approach presents an interface to the developer in the form of a library API, allowing user control and low-cost integration into existing workloads.
-
-Although still in the realm of the compiler-based techniques, pragmas have been suggested as a solution to the problem of providing control over the transformations to the user.
-Proposals to add such pragmas have been submitted to OpenMP~\cite{kruse2019design} and Clang~\cite{kruse2018user}.
-Other work has implemented transformation pragmas into a source-to-source compiler~\cite{xu2014semi}. 
-
-
-Domain-specific language approaches are another avenue for presenting users with control of the data layout transformations to apply. 
-Kronawitter et al.~\cite{kronawitter2018automatic} incorporate data layout specifications into the ExaSlang DSL.
-Using a polyhedral framework, the Tiramisu DSL~\cite{baghdadi2019tiramisu} also enables data layout transformation specifications.
-In contrast to these specialized approaches, our approach seeks to support a wider class of computations without needing the additional machinery required to use DSLs. 
-
 
 \section{Conclusion}
 
-
-Effective use of the memory hierarchy is critical to application performance.
-One way of doing this is by changing how data is stored within memory.
-Yet, in performance portability libraries like RAJA and Kokkos, where one codebase is used for machines with different architectures, there are not yet tools for transforming the layout of data between parts of a computation. 
-Thus, if a developer wants to introduce these optimizations, they are left in a time-consuming, error-prone situation --- further exacerbated by the potential for data layout transformations to not be worth the overhead.
-
-This chapter's contribution, \FormatDecisions, remedies this situation by combining declarative format specification  interface with runtime performance modeling to supplement user directives.
-Integrated directly into the performance portability library RAJA, but possible in any library with computation objects and a data View-like abstraction, \FormatDecisions{} provides a flexible interface for quick exploration of data layout changes. 
-Additionally, \FormatDecisions{} uses an ILP formulation to optionally identify other profitable transformations, \enquote{filling in} the user specification.
-
-When evaluated against hand-implemented layout transformations on seven benchmark kernels, \FormatDecisions{} provides comparable performance improvements with a fraction of the code changes.
-Furthermore, subsequent modifications to the layout transformations, for example as part of porting a codebase to a new machine, are reduced to single-line changes. 
-This improves maintainability and reduces the potential for introducing bugs.
-Overall, by approaching data layout optimization from the direction of programmer productivity, \FormatDecisions{} enables developers to explore different layouts with ease. 
+\todo{how to modify this approach for use in kokkos or yakl}
+Kokkos's StridedLayout could be used in the same way as RAJA's permuted layouts. 
+YAKL is less capable, and is a less mature interface, especially with its container type.
 
 
 
-\begin{comment}
-\section{3D Partial Assembly}
-
-The kernel \verb.MASS3DPA. is notable for its complex nestings and chain length. 
-Within the outermost loop, it allocates two cubes, \verb.sm0. and \verb.sm1., of side length \verb.MDQ..
-There are five persistent allocations: \verb.B., \verb.Bt., \verb.D., \verb.X., and \verb.Y.. 
-\verb.B. and \verb.Bt. are two dimensional, while the others are four. 
-\verb.Y. is the output value.
-\verb.MQ1. is set to 5, and \verb.MD1. to 4. 
 
 
-\begin{lstlisting}[caption={3D Mass Partial Assembly reference implementation}]
-for e in 0..< NE {
-	//DDQ <- X
-	for (dy, qx, dx, dz) in (0,0,0,0)..<(D1D, Q1D, D1D, D1D) {
-		DDQ(dz, dy, qx) += X(dx, dy, dz, e) * Btsmem(qx, dx);
-	}
 
-	//DQQ <- DDQ
-	for (qy, qx, dy, dz) in (0,0,0,0)..<(Q1D, Q1D, D1D, D1D) {
-		DQQ(dz, qy, qx) += DDQ(dz, dy, qx) * Btsmem(qy, dy);
-	}
-
-	//QQQ <- DQQ and D
-	for (dy, qx, dz, qz) in (0,0,0,0)..<(Q1D, Q1D, D1D, Q1D) {
-		QQQ(qz, qy, qx) += DQQ(dz, qy, qx) * Bsmem(qz, dz) * D(qx, qy, qz, e);
-	}
-
-	for (d,q) in (0,0)..<(D1D, Q1D) {
-		Btsmem(d,q) = Bt(q,d);
-	}
-
-	//QQD <- QQQ
-	for (qy, dx, qx, qz) in (0,0,0,0)..<(Q1D, D1D, Q1D, Q1D) {
-		QQD(qz, qy, dx) += QQQ(qz, qy, qx) * Btsmem(dx, qx);
-	}
-
-	// QDD <- QQD
-	for (dy, dx, qy, qz) in (0,0,0,0)..<(D1D, D1D, Q1D, Q1D) {
-		QDD(qz, dy, dx) += QQD(qz, qy, dx) * Btsmem(dy, qy);
-	}
-
-	// Y <- QDD
-	for (dy,dx,qz,dz) in (0,0,0,0)..<(D1D, D1D, Q1D, D1D) {
-		Y(dx, dy, dz, e) += QDD(qz, dy, dx) * Btsmem(dz, qz);
-	}
-}
-
-\end{lstlisting}
-
-Overall, we go from an array of DDD (X), to an array of DDD (Y), trading one dimension at a time from D to Q, then back. DDD -> QQQ -> DDD. This is facilitated by the B array, which is addressed by the d and q dimensions of each of x, y, and z. 
-As we reach QQQ, we also multiply in D, then flip B's memory to convert back from Q to D.
-
-Xsmem is, at the beginning of each loop, assigned to a 3D hyperslice of the 4D \verb.X. structure.
-Each of the 3 dimensional structures, DDQ, DQQ, QQQ, QQD, and QDD, are temporaries that share the two cubed data structures. 
-Furthermore, all loops except for the one transposing \verb.Bt. are implemented using a temporary vector \verb.u. to accumulate the updates.
-
-To implement this kernel and explore its optimization, we begin with a version without the various temporary storage optimizations. 
-This means we give the temporary Views their own storage and accumulate directly into the multidimensional arrays rather than using a temporary vector.
-
-Additionally, to not clobber the existing port in RAJAPerf, we use lowercase variable names for teh views.
-	
-\end{comment}

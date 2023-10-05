@@ -1,9 +1,9 @@
-\chapter{RAJALC: Cross-Loop Schedule Transformations}\label{chap:RAJALC}
+\chapter{Schedule Transformations}\label{chap:RAJALC}
 
 Typical parallelization approaches such as OpenMP and CUDA provide constructs for parallelizing and blocking for data locality for individual loops.
 By focusing on each loop separately, these approaches fail to leverage sources of data locality possible due to inter-loop data reuse.
 The loop chain abstraction provides a framework for reasoning about and applying inter-loop optimizations.
-In this chapter, I incorporate the loop chain abstraction into RAJA, a performance portability layer for high-performance computing applications.
+In this chapter, I incorporate the loop chain abstraction into RAJA, a performance portability library for high-performance computing applications.
 Using the loop-chain-extended RAJA, or RAJALC, developers can have the RAJA library apply schedule transformations like loop fusion and overlapped tiling while maintaining the original structure of their programs. 
 By introducing targeted symbolic evaluation capabilities, RAJALC can collect and cache data access information required to verify loop transformations.
 I evaluate the performance improvement and refactoring costs of other extension.
@@ -28,10 +28,10 @@ Because the labor costs of developing a new version of an application are so hig
 there is a need for tools that allow developers to design a single application
 that performs well across systems with minimal modifications.
 
-One such tool is the RAJA performance portability layer~\cite{hornung2014RAJA}, a C++ library.
-RAJA enables programmers to specify loops with templated functions,
-where one template parameter is an execution policy such as 
-\verb.simd_exec. (vectorized), \verb.omp_parallel_for_exec. (OpenMP threading), or \verb.cuda_exec. (GPU).
+Performance portability libraries like RAJA~\cite{hornung2014RAJA} do exactly this.
+These libraries enables programmers to specify loops with templated functions,
+where one template parameter is an execution policy that describes how a computation should be run.
+In RAJA, examples of these policies include \verb.simd_exec. (vectorized), \verb.omp_parallel_for_exec. (OpenMP threading), or \verb.cuda_exec. (GPU).
 Thus the heavy lifting of porting a parallel implementation to different 
 architectures is abstracted into standardized execution policies.
 
@@ -41,8 +41,8 @@ parallelized one at a time.
 Optimizing the performance of HPC applications is more complicated than introducing new parallelism.
 Many applications are not compute-bound, meaning additional parallelism does not improve performance. 
 Instead, moving data to and from memory and accelerators bottlenecks these applications. 
-While RAJA supports porting per-loop parallelism between systems, it lacks the ability to port inter-loop schedule transformations that improve data locality. 
-The key capability RAJA needs to enable porting these transformations is an inter-loop scope.
+While PPLs support porting per-loop parallelism between systems, they lack the ability to port inter-loop schedule transformations that improve data locality. 
+The key capability they need to enable porting these transformations is an inter-loop scope.
 The loop chain abstraction provides exactly this.
 
 The loop chain abstraction~\cite{krieger2013loop} captures sequences of loops that share 
@@ -53,7 +53,7 @@ and overlapped tiling, that are impossible to replicate when optimizing
 each loop independently.
 \textbf{I address the problem in porting data locality optimizations in this
 work by incorporating loop chaining, an abstraction for balancing data locality
-with parallelism across loops, into RAJA.}
+with parallelism across loops, into a representative performance portability library, RAJA.}
 The technique imposes a minimal code delta on the developer, leverages C++'s
 operator overloading and generic lambdas to perform necessary analysis, and
 requires no additional compilation steps.
