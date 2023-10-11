@@ -415,25 +415,26 @@ When choosing this pair, the shorter \verb.set_format. was considered, but lacks
 \section{Automatic Layout Selection}
 
 \FormatDecisions{} supports optional automated layout selection through the \verb.model(). method.
-Broadly, the system constructs a search space of possible choices, estimates their costs based on a performance model, and selects the one with the lowest.
+Broadly, the system constructs a search space of possible choices, estimates their costs based on a performance model, and selects the one with the lowest cost.
 The problem of automatic layout selection has been formulated as an integer linear programming (ILP) problem by Bixby, Kennedy, and Kremer~\cite{bixby1994automatic}.
 The system used within \FormatDecisions{} is based on their formulation, but makes several modifications.
-First, instead of using a static cost model, \FormatDecisions{} estimates costs using runtime microbenchmarking, which more accurately captures the performance characteristics of modern architectures.
+First, instead of using a static cost model, \FormatDecisions{} estimates costs using runtime microbenchmarking.
 Second, it uses a modified heuristic for determining the candidate layouts to include in the model.
-Finally, \FormatDecisions{} uses a nonlinear integer programming formulation to reduce the number of decision variables, improving solve time.
+Finally, \FormatDecisions{} uses a nonlinear integer programming formulation to reduce the number of decision variables, counterintuitively improving solve time (see Section~\ref{sec:modelExperiments}).
 
 This section begins with an overview of the layout selection problem and the prior formulation of Bixby, Kennedy, and Kremer.
 It then details the modifications made in \FormatDecisions{}.
-It concludes with six experiments that illustrate the model in action.
+It concludes with six experiments that illustrate the effects of different parameters on model solve time, as well as the impact of the switch from a linear to nonlinear optimization problem.
 
 \subsection{The Layout Selection Problem}
 
 Layout selection is a decision problem.
-It asks: Given an array and a series of $N$ loop nests, what data layout should the array have during each loop nest to maximize performance?
+It asks: Given an array and a series of $N$ loop nests accessing the data in $W$ different ways (e.g. \verb.A(i,j)., \verb.A(j,i)., \dots), what data layout should the array have during each loop nest to maximize performance?
 Valid answers come as a list of $N+1$ layouts, one to use for each loop nest and one for the array to be in at the end.
-For an isolated loop nest, the optimal answer is usually evident from a visual inspection of the code; the best layout is the one that matches the layout to the access order.
+For an isolated loop nest with only one kind of access to the array, the optimal answer is usually evident from a visual inspection of the code; the best layout is the one that matches the layout to the access order.
 However, when considering even two loop nests in sequence, the optimal choice is no longer statically evident.
 This is because the benefit of using the optimal layout for a loop nest must be weighed against the cost of converting the data from one layout to another.
+The challenge is further compounded by architectural differences that can affect both the cost of conversion and which layout will perform optimally.
 The difficulty of this comparison lends itself to automation.
 
 Automating the layout selection problem, like many other decision problems, follows a two-step process: generate a set of valid solutions, then search the set for the best one.
@@ -465,23 +466,18 @@ The configuration of switches that minimizes the objective function corresponds 
 
 The accuracy of a solution relies on the accuracy of the model used to select it.
 For the layout selection problem, the most important factor is the accuracy of the cost coefficients.
-In the BKK formulation, the cost coefficients are generated using a static performance model.
+In the BKK formulation, the cost coefficients are calculated using static performance models based on pre-run training sets using vendor-specific communication libraries~\cite{kremer1996automatic}.
 Thus, the quality of their layout selection system is entirely determined by the quality of this performance model.
 Because the BKK performance model is static, each new machine requires a new and unique performance model be added to the system.
 This limits the system's portability.
 
-
-
-
 The model \FormatDecisions{} uses to solve the layout selection problem is a modified version of the BKK formulation.
 There are three key differences.
-First, the model is solved at runtime, rather than as part of a programming tool, using microbenchmarking results to inform the cost coefficients.
-Second, the model uses an alternative approach to selecting candidate data layouts.
-Third, the model uses a nonlinear objective function.
+First, the model is solved at runtime, rather than as part of a programming tool, using microbenchmarking results to inform the cost coefficients (Section~\ref{sec:microbenchmarking}).
+Second, the model uses an alternative approach to selecting candidate data layouts (Section~\ref{sec:candidateSelection}).
+Third, the model uses a nonlinear objective function (Section~\ref{sec:nonlinearFunc}).
 
-
-
-\subsection{Runtime Solving and Microbenchmarking}
+\subsection{Runtime Solving and Microbenchmarking}\label{sec:microbenchmarking}
 
 Where the BKK model is incorporated into a static, pre-compilation programming tool, \FormatDecisions{} solves the layout selection problem at runtime.
 Because the model is solved at runtime, \FormatDecisions{} gains two sources of information not present in the BKK formulation.
@@ -491,8 +487,6 @@ These microbenchmarks are run as part of the program's execution, so they will b
 While runtime solving can incorporate previously unavailable information, it comes with runtime overhead.
 This runtime overhead must be outweighed by the performance improvement of the layout optimization, so the smaller the model, the better.
 The second and third modifications are motivated by this need for a quick model, but first I turn to the runtime microbenchmarking.
-
-\todo{write about microbenchmarking}
 
 \FormatDecisions{} uses runtime microbenchmarking to estimate the costs of using and converting among the candidate layouts. 
 The results of the microbenchmarking are incorporated into the model through the coefficients on the decision variables in the objective function.
@@ -609,7 +603,7 @@ This is because a conversion from one layout to another can naturally be viewed 
 Thus, the cost coefficient becomes the size of the array multiplied by the sum of the two access estimates.
 
 
-\subsection{Candidate Layout Selection}
+\subsection{Candidate Layout Selection}\label{sec:candidateSelection}
 
 The second modification refines how the model determines which layouts to include as candidates for selection.
 The BKK formulation does not detail how their model makes this choice, but only discusses two-dimensional data, where there are only two possible orderings.
@@ -637,7 +631,7 @@ Finally, rotation is a staple, comprehensible transformation with transparent be
 This makes for easier reasoning about the model's decisions.
 While repeated rotation is the default generating transformation, the user can supply an arbitrary generating function as long as it maps containers of layout permutations to containers of layout permutations.
 
-\subsection{Nonlinear Objective Function}
+\subsection{Nonlinear Objective Function}\label{sec:nonlinearFunc}
 
 Minimizing solve time also led to the third key difference between the BKK formulation and the \FormatDecisions{} formulation: the use of a nonlinear objective function.
 Execution time attributable to the ILP model comes from two sources: problem initialization (setup), and objective function minimization (solve).
@@ -777,9 +771,23 @@ $
 \end{figure}
  the View \verb.A. in Listing~\ref{SelectionExampleCode} 
 
-\subsection{Six Parameters, Six Experiments}
+\subsection{Six Parameters, Six Experiments}\label{sec:modelExperiments}
 
-To illustrate the workings of the layout selection model, I present its use for six synthetic programs that each vary one parameter: loop count, loop depth, memory footprint, access count, user constraint count, and data dimensionality.
+\begin{table}[t]
+\begin{tabular}{|c|c|c|c|c|}
+\hline
+\textbf{Machine Name} & \textbf{L1 Cache Size} & \textbf{L2 Cache Size} & \textbf{L3 Cache Size} & \textbf{RAM Size} \\
+\hline 
+Lassen & 32KB (73x73) & 512KB (292x292) & 120MB (4472x4472) & 256GB \\
+\hline
+Quartz & 32KB (73x73) & 256KB (205x205) & 45MB (2739x2739) & 128GB \\
+\hline
+\end{tabular}
+\caption{Experimental machine characteristics. Parentheticals indicate filling array sizes for computation using 3 square matrices of doubles.}\label{machineDetails}
+\end{table}
+
+
+To illustrate the workings of the layout selection model, I present its use for six synthetic programs that each vary one parameter: loop count, loop depth, memory footprint, access count, user constraint count, or data dimensionality.
 Results are reported for two versions of the model.
 The ``Linear Model'' panels use the BKK formulation of the optimization problem.
 This means that it uses remapping variables, a linear objective function, and exhaustively enumerates the candidate layouts.
@@ -794,6 +802,7 @@ For each experiment, I break the modeling time into the time spent modeling diff
 The first experiment, shown in Figure~\ref{LoopCount}, shows the modeling time for loop chains with between one and eight loop nests.
 For this experiment, all loop nests are three-dimensional and make three accesses to two-dimensional arrays of $100\times100$ doubles. 
 No user constraints are added.
+Because each new loop nest multiplies the number of possible paths by the number of candidates, the expected behavior is an exponential growth in solve time, which the results supports.
 This experiment illustrates the execution time savings of eliminating the remapping variables from the model.
 Using the linear model, because there are so many decision variables in the model, the majority of modeling time is spent in setup with as few as four loop nests (57\%).
 Overall, the nonlinear model is between $1.29\times$ and $2.63\times$ faster than the linear model in this experiment.
@@ -804,51 +813,55 @@ Overall, the nonlinear model is between $1.29\times$ and $2.63\times$ faster tha
 \end{figure}
 The second experiment, shown in Figure~\ref{NestDepth}, shows the modeling time for loop chains where loop nest depth ranges from two to four.
 Here, the loop chain contains three loop nests, and all other parameters are the same as the first experiment.
-Note that the modeling time is constant across the different nest depths. 
-This is because the performance model is data-oriented rather than loop-oriented: it seeks to model the performance of each access in the loop rather than the loop as a whole.
-The contribution of each access to the objective function is scaled by the number of iterations.
+Because the performance model is data-oriented rather than loop oriented, meaning it seeks to model the performance of each access in the loop rather than the loop as a whole, the hypothesis is that modeling time will remain constant across different nest depths.
+The results support this hypothesis.
 
 \begin{figure}
 \includegraphics[width=0.5\columnwidth]{Footprint.pdf}
 \caption{(Lack of) Changes in modeling time for different memory footprints.}\label{Footprint}
 \end{figure}
-\todo{Run with sizes based on filling cache.}
 The third experiment varies the size of the arrays accessed by the loop chain, shown in Figure~\ref{Footprint}.
-Like with the loop nest depth, the modeling time remains constant across the different sizes.
-The cause is similar; as the memory footprint increases, the only feature of the model that changes is the magnitude of the coefficients within the objective function.
+Because the model only uses data sizes as coefficients in the model, the modeling times should remain the same as the memory footprint increases.
+The results support this hypothesis.
 
 
 \begin{figure}
 	\includegraphics[width=0.5\columnwidth]{AccessCount.pdf}
 	\caption{Changes in modeling time for different numbers of data accesses.}\label{AccessCount}
 \end{figure}
-\todo{explain the small, linear scaling of the cost estimation, and the negative scaling of the setup in the linear model}
 Next is the number of accesses made to the data within the loop body.
+Because modeling results are reused where possible, more accesses should not lead to more cost estimation time. 
+However, it could lead to slightly higher solve times, as the objective function adds new terms for each access.
+The results for this experiment are somewhat unexpected, as cost estimation time scales with the access count.
+This is likely due to cost of accessing the cache holding prior estimation results, as the cost estimation increase per additional access is much small than the cost of modeling a single access.
 
 \begin{figure}
 	\includegraphics[width=0.5\columnwidth]{ConstraintCount.pdf}
 	\caption{Changes in modeling time for different numbers of user-provided layout decisions.}\label{ConstraintCount}
 \end{figure}
+
 Fifth is the number of layout decisions the user provides. 
 Each additional layout decision adds one constraint, reducing the number of valid configurations. 
-Thus, the solving time is reduced, as there are fewer points to evaluate.
+This should lead to a reduction in solving time, as there are fewer points to evaluate.
+The results support this hypothesis.
 
 
 \begin{figure}
 	\includegraphics[width=0.5\columnwidth]{DataDimensionality.pdf}
 	\caption{Changes in modeling time for data with different numbers of dimensions.}\label{DataDimensionality}
 \end{figure}
-Sixth and final is the dimensionality of the data, varying in Figure~\ref{DataDimensionality} from two to six, selected as the maximum for QCD\todo{is this the right thing? i don't remember what bronis said}.
-This has the most significant impact on execution time, and without reducing the set of candidate layout using the rotation heuristic, the execution reaches timeout before completing for four, five, and six dimensions.
+Sixth and final is the dimensionality of the data, varying in Figure~\ref{DataDimensionality} from two to six, the maximum dimensionality found in a production code (QCD).
+The hypothesis is that the modeling time for the heuristic-driven model will increase linearly with the number of dimensions.
+This hypothesis is partially supported by the results.
+Without reducing the set of candidate layout using the rotation heuristic, the execution reaches timeout before completing for four, five, and six dimensions.
 For the version using the rotation heuristic, the solve time scales linearly with the dimensionality because the number of decision variables increases linearly with the dimensionality.
-The cost estimation time scales faster than linearly, \todo{explain}.
-
+The cost estimation time scales faster than linearly, likely because of the dual increases in the number of layouts to model and the number of operations required to calculate the memory offset. 
+This would also explain the large jump in cost estimation time between three and four dimensions, as the compiler may not be performing strength reduction on the incrementing for higher dimensional data.
 
 \section{Production System}
 
-The \FormatDecisions{} prototype lends itself to an adaptive production system.
-This section outlines such a potential system that uses representative training runs to entirely offload the overhead of running the decision model.
-The production version uses a single feature not present in the prototype: decision I/O.
+This section outlines a potential production system based on \FormatDecisions{} that uses representative training runs to entirely offload the overhead of running the decision model.
+The production version would use a single feature not present in the prototype: decision I/O.
 Specifically, to use the model results from a training run during a later production run, the system would need to be able to write out and read back in the model's layout decisions to persistent files 
 This is not a completely trivial feature, but it is not a significant challenge, and I will return to it after outlining the system's function.
 
@@ -864,7 +877,7 @@ Like the training mode, it writes the decisions to file, so that later runs can 
 With this scheme, newly encountered code paths will incur modeling costs for a single run, but not thereafter.
 
 Returning to the problem of decision I/O, the key insight is that each \FormatDecisions{} object has a unique type.
-Thus, the decisions can be indexed by the hash of its decision object type.
+Thus, the decisions can be indexed by hashing the type of the \FormatDecisions{} object with which the decisions are associated.
 This ensures that decisions for a GPU execution are not used for a CPU execution, as the \FormatDecisions{} object types contain the execution policy types of their constituent kernels.
 
 
