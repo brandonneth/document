@@ -3,7 +3,7 @@
 Most of software engineering produces instruments of production.
 Like a freshly manufactured hammer, these products are used to produce.
 In especially self-referential cases, software engineering results in products themselves used for software engineering.
-Such products, including the languages and libraries used by programmers every day, are valuable because they increase labor productivity, the same quality faster or improved quality at the same rate.
+Such products, including the languages and libraries used by programmers every day, are valuable because they increase labor productivity: the same quality faster or improved quality at the same rate.
 
 Performance portability libraries are an example of this.
 In their domain, high performance computing, quality is often defined in terms the size of a solvable problem and the speed and accuracy of its solution.
@@ -23,16 +23,17 @@ Schedule transformations written with RAJALC reduced the necessary code changes 
 A similar approach could be used for other cross-kernel schedule optimizations like diamond tiling and wavefront parallelization. 
 This would be aided by abstractions to introduce unrolling or kernel repetition for scheduling across iterations of an outer time loop.
 
-Chapter~\ref{chap:FormatDecisions} introduced similar support for changing data layouts between loops.
+Chapter~\ref{chap:FormatDecisions} introduced support for changing data layouts between loops.
 These transformations improve performance by organizing data in ways that facilitate streaming accesses.
 In the \FormatDecisions{} API, automated modeling supplements user-provided transformations.
 Runtime microbenchmarking and access patterns derived from runtime symbolic evaluation guide the model.
 The interface enables the performance improvement of hand-implemented data layout transformations with a fraction of the code changes.
 
-One future avenue of research could explore extending the possible layouts beyond the currently support strided layouts to morton order layouts or tiled layouts.
+One future avenue of research could explore extending the possible layouts beyond the currently support strided layouts to Morton-order layouts or tiled layouts.
 Templated loop body functions would be helpful here to reduce data access overhead.
-Another avenue for research could, just using the existing strided layout support, integrate the schedule transformations of RAJALC with temporary storage optimizations.
+Another avenue for research could, using just the existing strided layout support, integrate the schedule transformations of RAJALC with temporary storage optimizations.
 This would need to leverage 0-stride View dimensions.
+Finally, further work could incorporate the approach into a production system that saves modeling results for reuse between runs, amortizing modeling cost not only over the many iterations in a single computation but across multiple runs of the same program.
 
 Finally, Chapter~\ref{chap:SparseRAJA} examined the possibility of support for format-independent sparse computation using RAJA's existing abstractions.
 The prototype interface enabled the intuitive specification of sparse computations, but runtime overhead from the new components was ultimately too significant, largely caused by conditionals introduced into the innermost loop.
@@ -40,8 +41,9 @@ While the decoupling of iteration space, schedule, and data access in performanc
 
 Future research will need to consider more significant modifications to the programming model to support the higher degree of coupling.
 For tensor expressions, the approach of the tensor algebra compiler~\cite{kjolstad2017tensor} shows promise.
-However, generating sufficiently performant code with template specialization presents a challenge, as TACO generates and optimizes an AST, then generates and dynamically links to the resulting computation.
-The project's abstractions for different possible sparse dimensions~\cite{chou2018format} would be better suited to the template metaprogramming paradigm of PPLs.
+However, generating sufficiently performant code with template specialization presents a challenge.
+TACO generates and optimizes an AST, then generates and dynamically links to the resulting computation.
+Regardless, the project's abstractions for different possible sparse dimensions~\cite{chou2018format} would be better suited to the template metaprogramming paradigm of PPLs.
 
 Overall, performance portability libraries are a useful tool to have when developing portable codes for high performance systems.
 The abstractions they provide are easily extended to support even more complex transformations, two classes of which were shown here.

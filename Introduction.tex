@@ -182,14 +182,14 @@ First, I describe the abstractions in performance portability libraries for mult
 Then, the layout transformations, like switching between row- and column-major storage, they enable.
 Multidimensional data is exceedingly common in simulation codes.
 However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
-Thus, any multi-dimensional representation must be mapped to the 1-dimensional nature of the hardware.
+Thus, any multi-dimensional representation must be mapped to the one-dimensional nature of the hardware.
 Usually, this is achieved by breaking the data into one-dimensional strips and storing each strip in sequence.
 Different ways to break the data into strips produce different orders of elements within memory.
 Two examples of these layouts are the well-known 2D column-major and row-major storage formats.
 With these layouts, the strips of one-dimensional data are either the columns or the rows of the matrix.
 
 When tuning an application for a new system, changing the layout of data in memory can have large performance implications.
-These differences are especially relevant between different processor types, where a data layout that performs well on a CPU is not best for a GPU\@.
+These differences are especially relevant between different processor types, as a data layout that performs well on a CPU is not best for a GPU\@.
 It can also impact performance between two CPUs because of threading and cache behaviors~\cite{trott2021kokkos}.
 
 Traditional approaches to representing multi-dimensional data, such as the array of pointers or the vector of vectors used in Listing~\ref{stencilCpp} do not admit an easy data layout change.
@@ -353,15 +353,15 @@ for(int i = 1; i < N-1; i++) {
 
 Transformations at the inter-loop scope often target the reuse of data between loops.
 In computations bottlenecked by data transfer speeds, like sparse computations and the stencil computation above, these optimizations are especially beneficial. 
-Two examples are loop fusion and inter-kernel layout transformations.
+Two examples of these optimizations are loop fusion and inter-kernel layout transformations.
 
 Loop fusion is a well-known optimization for improving data locality in sequences of loops that use common data.
-It appears as an automated transformation in source-to-source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use in hand-optimization decades before~\cite{warren1984hierarchical,cocke1971catalogue}.
+It appeared as an automated transformation in source-to-source compilers in the mid 90s~\cite{mckinley1996improving}, but was in use in hand-optimization decades before~\cite{warren1984hierarchical,cocke1971catalogue}.
 Modern production C++ compilers can do loop fusion in some simple-to-analyze situations, but function calls and pointer aliasing prevent complete automation.
 A simple example of this transformation is shown in Listing~\ref{fusionExample}.
 Rather than computing and storing the entirety of the intermediary arrays, loop fusion allows for the values to be used as soon as they are produced, when the value may still even be in the processor's registers.
 
-Unfortunately, this benefit is not guaranteed.
+Unfortunately, this performance benefit is not guaranteed.
 As the number of fused loops increases, so does the size of the loop body, and with it the register pressure. 
 At a certain point, more values are used in the fused body than exist registers to hold them.
 Extras spill into memory, with performance implications.
@@ -375,11 +375,11 @@ By choosing tile sizes that keep the fraction of recomputation low, parallel exe
 This transformation has been incorporated into an OpenCL compiler by Zhou et al~\cite{zhou2012hierarchical} and Polymage~\cite{mullapudi2015polymage}, a DSL for image processing pipelines, incorporates overlapped tiling into its automatic optimization passes.
 These approaches do not allow for programmer control over the tiling process.
 Halide~\cite{ragan-kelley2013halide}, another DSL for image processing pipelines, surfaces control over tiling to the programmer.
-For the optimization of existing codes, Bertolacci et al~\cite{bertolacci2019using} develop an approach based on pragma directives.
+For the optimization of existing codes, Bertolacci et al~\cite{bertolacci2019using} developed an approach based on pragma directives.
 
 While the fused code shown in Listing~\ref{fusionExample} is not appreciably more complex than the original sequence of kernels, it does require breaking some of the loop iterations out of the loop nest.
 This makes it more difficult to parse exactly what the code is doing and why parts of it are in the loop and others are not.
-With overlapped tiling, this is amplified by the tile calculations, which obscure what parts of the code are the operation and what parts are part of the scheduling. 
+With overlapped tiling, this is amplified by the tile calculations that obscure which parts of the code are the operation and which parts are the scheduling. 
 
 \subsection{Layout Changes: Transpose Example}
 \begin{figure}
@@ -502,10 +502,12 @@ tiled_64();
 \end{figure}
 
 In Chapter~\ref{chap:FormatDecisions}, I build on the kernel wrapper and symbolic evaluation extensions to introduce inter-kernel data layout transformations through the \FormatDecisions{} interface.
+Further, I incorporate an automated decision model based on runtime profiling to identify profitable layout transformations without user intervention.
+I describe how this system could be incorporated into a production codebase to reuse modeling results, further amortizing modeling costs across many runs of a program.
 The first challenge here is providing user control over the transformations without sacrificing the benefits of automated transformation.
 To address this, the interface allows the programmer to succinctly specify the desired format for different pieces of data throughout a computation.
 Then, because I incorporate a runtime performance model into the system, it can identify potentially beneficial transformations in addition to those specified by the programmer.
-Overall, this creates an as-automated-as-desired system, built directly into the library.
+Overall, this creates an as-automated-as-desired system built directly into the library.
 The second challenge is representing computations with triangular iteration spaces.
 I augment the interface for describing iteration spaces in RAJA to iteration spaces that are not hyper-rectangular.
 An example code using \FormatDecisions{} is shown in Listing~\ref{Intro:FormatDecisions3MM}.
@@ -538,7 +540,7 @@ computation();
 \end{lstlisting}
 \end{figure}
 
-Finally, in Chapter~\ref{chap:SparseRAJA}, I develop prototype support for representing format-agnostic sparse computation and data within RAJA\@.
+Finally, in Chapter~\ref{chap:SparseRAJA} I develop prototype support for representing format-agnostic sparse computation and data within RAJA\@.
 The two challenges for sparse computations are constructing the sparse iteration space and efficiently iterating through the sparse data.
 Using symbolic evaluation to gather the data access patterns in the computation, the prototype constructs a sparse iteration space from the dense-like specification provided by the programmer.
 Then, for iterating through sparse data, the system uses a software prefetching approach during kernel execution to reduce the computational complexity of data access.

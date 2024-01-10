@@ -1,12 +1,12 @@
 \chapter{Schedule Transformations}\label{chap:RAJALC}
 
-Typical parallelization approaches such as OpenMP and CUDA provide constructs for parallelizing and blocking for data locality for individual loops.
-By focusing on each loop separately, these approaches fail to leverage sources of data locality possible due to inter-loop data reuse.
-The loop chain abstraction provides a framework for reasoning about and applying inter-loop optimizations.
+Typical parallelization approaches such as OpenMP and CUDA provide parallelizing and blocking directives for individual loops.
+By focusing on each loop separately, these approaches do not leverage possible data locality from inter-loop data reuse.
+The loop chain abstraction provides a framework for reasoning about and applying inter-loop optimizations that do.
 In this chapter, I incorporate the loop chain abstraction into RAJA, a performance portability library for high-performance computing applications.
 Using the loop-chain-extended RAJA, or RAJALC, developers can have the RAJA library apply schedule transformations like loop fusion and overlapped tiling while maintaining the original structure of their programs. 
 By introducing targeted symbolic evaluation capabilities, RAJALC can collect and cache data access information required to verify loop transformations.
-I evaluate the performance improvement and refactoring costs of other extension.
+I evaluate the performance improvement and refactoring costs of the extension.
 Overall, the results demonstrate 85--98\% of the performance improvements of hand-optimized kernels with dramatically fewer code changes.
 
 \section{Introduction and Summary}
@@ -38,7 +38,7 @@ architectures is abstracted into standardized execution policies.
 
 When optimizing an application, loops are generally considered and
 parallelized one at a time.
-Optimizing the performance of HPC applications is more complicated than introducing new parallelism.
+However, optimizing the performance of HPC applications is more complicated than introducing new parallelism.
 Many applications are not compute-bound, meaning additional parallelism does not improve performance. 
 Instead, moving data to and from memory and accelerators bottlenecks these applications. 
 While PPLs support porting per-loop parallelism between systems, they lack the ability to port inter-loop schedule transformations that improve data locality. 
@@ -46,7 +46,7 @@ The key capability they need to enable porting these transformations is an inter
 The loop chain abstraction provides exactly this.
 
 The loop chain abstraction~\cite{krieger2013loop} captures sequences of loops that share 
-data and enough information about how such loops access 
+data and enough information about how the loops access 
 data to enable inter-loop optimization.
 Considering loops as a chain uncovers optimizations, like fusion
 and overlapped tiling, that are impossible to replicate when optimizing
@@ -72,7 +72,7 @@ Furthermore, in 21 of 24 benchmark-system combinations, RAJALC sees performance 
 
 \section{RAJA's Approach to Portability}
 
-Before making the step to inter-loop representation and optimization, let us the key features of RAJA that enable performance portability
+Before making the step to inter-loop representation and optimization, I review the key features of RAJA that enable performance portability
 as RAJALC leverages them.
 These features are an abstraction layer for data accesses and the
 orthogonal specification of loop schedules
@@ -93,16 +93,13 @@ RAJA has two built-in execution primitives: \verb.forall. and \verb.kernel..
 \verb.kernel..
 We must provide three pieces of information to \verb.kernel.. 
 First, we provide the execution policy, which describes the structure of
-the loop and what parts to run in parallel.
-Second, we provide a container of iterator tuples, which describe the
-iterator values for the loop execution.
-Last, we provide a lambda function that describes the loop body.
-
+the loop and what parts to run in parallel (Lines 14-20 of Listing~\ref{hydroPort}).
+Second, we provide a tuple of containers, representing the iteration space of the computation (Lines 22 and 23).
+Last, we provide a lambda function that describes the loop body (Lines 24-27).
 
 Another useful step employs RAJA's array wrapper, the View, which supports
 easily changing the layout of arrays.
-Their use is generally optional with RAJA, but is required to use the loop
-chain abstraction.
+Their use is generally optional with RAJA, but is required to use the RAJALC abstraction.
 The abstraction requires data access information, which we collect by
 overloading View operators.
 Lines 10--11 of Listing~\ref{hydroPort} show how to initialize \verb.zrout.
@@ -168,7 +165,7 @@ meaningful inputs.
 
 \section{Loop Chain Abstraction}\label{sec:loopchain}
 RAJA loop execution policies apply to individual loops.
-Often two or more loops exhibit producer/consumer data sharing.
+Often, two or more loops exhibit producer/consumer data sharing.
 The loop chain abstraction~\cite{krieger2013loop} enables scheduling
 across such loops to improve temporal data locality. 
 The goal is to design RAJA techniques to express and to schedule loop chains.
@@ -259,7 +256,7 @@ schedule relations.
 
 Although RAJA does not intrinsically provide chainable loop objects, it has many
 of the necessary components.
-The execution primitive and common case, \ttt{kernel} and  \ttt{forall}, form
+The execution primitive \ttt{kernel} and its one-dimensional common case \ttt{forall} form
 the initial basis for the description of loop nests.
 The first kernel argument is a collection of iterator tuples, an explicit
 instance of an iteration space.
@@ -319,7 +316,7 @@ However, in standard RAJA, computational \verb.kernel. statements immediately ex
 So, I introduce a wrapper class (\verb.KernelWrapper.) that enables execution
 to be delayed until after analysis and transformation.
 I introduce two functions based on existing kernel execution functions to
-create \verb.KernelWrapper.s: \verb.make_forall. and \verb.make_kernel..
+create \verb.KernelWrapper. objects: \verb.make_forall. and \verb.make_kernel..
 They have the same interface as their corresponding execution functions, but
 return a \verb.KernelWrapper. object that can be executed or optimized.
 Listing~\ref{transformExample} shows these wrapping functions in use. 
@@ -359,15 +356,15 @@ developer by leveraging RAJA's array wrapping View abstraction.
 %We leverage RAJA's array wrapping Views, which use the call operator to access
 %arrays.
 Using RAJA \verb.Views.,
-an array access like \verb.a[i][j][k]. becomes the \verb.View. access \verb.a(i,j,k). as
+an array access like \verb.a[i][j][k]. becomes the \verb.View. access \verb.a(i,j,k)., as
 Listing~\ref{symExecChanges} shows.
 I overload the View function call operator with a symbolic iterator type to automate
 data access pattern collection through symbolic execution.
 %\todo{Brandon, by View call operator do you mean the overloaded parentheses?  Is that the terminology?} 
 % yes: https://en.cppreference.com/w/cpp/language/operators#Function_call_operator
 To use symbolic evaluation, kernel lambda arguments must be changed to
-\verb.auto., which allows normal execution of lambda using index values while
-its symbolical evaluation uses symbolic iterators.
+\verb.auto., which allows normal execution of lambda using index values and 
+symbolical evaluation using symbolic iterators.
 
 Figure~\ref{symExec} shows the process of symbolically evaluating the body of a lambda. 
 I break kernel symbolic evaluation into two contexts: indexing and accessing. 
@@ -420,13 +417,13 @@ For all transformations, the user provides the target kernel
 objects as arguments.
 Listing~\ref{transformExample} shows two of these transformations in use.
 
-Fusion transformations combine execution of iterations with the same iterator
+Fusion transformations combine iterations of different loops with the same iterator
 values to improve data locality.
 They work best for loops with producer-consumer relationships or those that
 access the same data.
 RAJALC's fusion transformations, \verb.fuse. and \verb.fuse_always., support
 a tradeoff between safety and porting cost.
-he former uses symbolic execution to determine if the transformation is legal.
+The former uses symbolic execution to determine if the transformation is legal.
 The latter applies it prescriptively.
 If the user knows the dependences between loops do not impede fusion,
 it allows them to fuse kernels that do not use Views. 
@@ -560,7 +557,7 @@ always completely align.
 Misalignments can arise from differences in the original iteration spaces
 or from shifts to remove negative dependences. 
 While the iterations the loops in a chain have in common are executed by
-the fused or tiled kernels, we also must generate extra kernels to execute
+the fused or tiled kernels, RAJALC must also generate extra kernels to execute
 the unshared boundary iterations.
 
 Figure~\ref{fusionPartition} illustrates the generation of these kernels
@@ -632,7 +629,7 @@ Finally, it perform overlapped tiling as Figures~\ref{tiling4}-\ref{tiling9} sho
 
 Before RAJALC can generate the kernel for the overlapped tiling, it must
 calculate the overlap amounts. 
-This is set up as an ILP optimization problem similarly to the calculation of the
+This is set up as an ILP optimization problem similar to the calculation of the
 shift amounts.
 For $n$ kernels of dimension $m$, the optimization problem is over the $nm$
 overlap amounts $O_{1,1},O_{1,2},\ldots,O_{2,1},\ldots,O_{n,m}$.
@@ -669,7 +666,7 @@ need for parallelism, enabling larger tiles than otherwise possible.
 
 I evaluate the advances through two case studies, porting the RAJA
 Performance Suite (RAJAPerf)~\cite{hornung2017raja} and LULESH from
-standard RAJA to RAJALC\@
+standard RAJA to RAJALC\@.
 In both case studies, I evaluate the performance and porting process
 of the RAJALC implementations and I detail benefits and limitations
 of the approach.
@@ -677,14 +674,14 @@ of the approach.
 The RAJA Performance Suite is a collection of benchmark kernels that are
 used to evaluate RAJA performance.
 The suite contains 46 benchmark kernels across five categories; 33 contain
-a single loop nest, leaving 13 kernels for which the advances are relevant.
+a single loop nest, leaving 13 kernels for which the advances presented in this chapter are relevant.
 Four of these are matrix computations involving reductions to which 
 RAJALC's current capabilities do not apply. 
 Finally, one benchmark does not exhibit any data reuse, so no data locality 
 optimizations are relevant, including those supported here. 
-Thus, I evaluate RAJALC on 8 benchmark kernels.
+Thus, I evaluate RAJALC on eight benchmark kernels.
 
-For each of the 8 kernels, I identify a locality-improving transformation
+For each of the eight kernels, I identify a locality-improving transformation
 and implement new variants.
 The first variant, \verb.Hand_Opt., applies the transformations directly.
 The second variant, \verb.LoopChain., applies the transformation using RAJALC\@.
@@ -752,7 +749,7 @@ existing RAJA applications has made its implementation low priority.
 
 For \verb.HYDRO_2D., applying overlapped tiling transformation with RAJALC 
 requires minimal changes: I add two lines of code and change three. 
-In contrast, the hand implementation changes four lines and added 41
+In contrast, the hand implementation changes four lines and adds 41
 new lines, effectively an order of magnitude more effort. 
 These additional lines calculate the amounts to shift and to overlap, 
 create the new, tiled kernel, and execute the boundary iterations not
@@ -775,7 +772,7 @@ implementation for \verb.JACOBI_1D..
 %%
 I add the double-buffer transformation by hand in these three variants;
 its automation is future work.
-I plan to use the access information collected during symbolic evaluation
+Future work could use the access information collected during symbolic evaluation
 to identify chains that require it and to implement the double buffer within
 the View class.
 \begin{figure}[t]
@@ -805,6 +802,7 @@ Also, while with RAJALC code retains its original structure, the
 hand-implemented transformations obscure the underlying computation,
 which significantly complicates code maintenance.
 \begin{table}[t]
+	\centering
 \begin{tabular}{|l|l|l|l|l|}
 \hline
 \textbf{Benchmark}       & \multicolumn{2}{l|}{\textbf{\begin{tabular}[c]{@{}l@{}}Manual \\ Implementation\end{tabular}}} & \multicolumn{2}{l|}{\textbf{\begin{tabular}[c]{@{}l@{}}RAJALC\\ Implementation\end{tabular}}} \\ \hline
@@ -875,7 +873,7 @@ For this evaluation, I ported LULESH v2.0~\cite{LULESH2}.
 \subsection{Porting}
 
 Porting LULESH is more involved than the RAJAPerf kernels. 
-I must first identify the part of the application to optimize,.
+I first identify the part of the application to optimize,.
 I choose the function \verb.EvalEOSForElems., which has a long series
 of point-wise computations over the same iteration space.
 The \verb.ENERGY. and \verb.PRESSURE. benchmarks within RAJAPerf are
@@ -1021,7 +1019,7 @@ The Cactus project~\cite{Ripeanu2001,Allen00cactus-gtoolkit} and
 Ding and He~\cite{Ding2001} demonstrated  overlapped tiling by expanding
 ghost cells in stencil computations. 
 Wonnacott and Strout~\cite{Wonnacott13} review many other approaches to
-time tiling for PDE codes that do explicit stepping versus implicit stepping.
+time tiling for PDE codes that do explicit stepping instead of implicit stepping.
 
 \subsection{DSLs Providing Inter-Loop Optimization}
 A number of DSLs have been developed for specifying and
@@ -1135,18 +1133,17 @@ sparse tiling.
 %%        <some PyOP2 parallel loops>
 %% \end{verbatim}
 
-The key differences between their work and this one is that I leverage the view 
-capability of RAJA to avoid needing to annotate how data is being accessed
+The key differences between their work and this one is that I leverage RAJA's View abstraction to avoid needing to annotate how data is being accessed
 in each loop.  
 Instead, symbolic analysis collects that information.
 
 \section{Conclusion}
 Inter-loop optimizations have long been known to improve data locality and 
-to reduce synchronization costs of computations with loops the share data
+to reduce synchronization costs of computations in loops that share data
 with producer-consumer relationships.
 However, the required refactoring has remained a tedious manual process with 
 significant impact on code maintainability.
-We have presented a design that retains the loop-based modularization typical
+This chapter has presented a design that retains the loop-based modularization typical
 of scientific codes while enabling the automated application of important
 inter-loop optimizations.
 RAJALC adds a loop chain construct and some API parameters to enable symbolic
