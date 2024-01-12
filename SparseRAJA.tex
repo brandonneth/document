@@ -1,14 +1,14 @@
 \chapter{Sparse Transformations}\label{chap:SparseRAJA}
 
-Performance portability libraries (PPLs) are so useful because their abstractions let developers port applications to new systems without rewriting large portions of their code.
+Performance portability libraries (PPLs) are useful because their abstractions let developers port applications to new systems without rewriting large portions of their code.
 Because the abstractions in these libraries are so general, as broad as ``loops and data,'' programmers can use them to represent entire programs portably.
 But there is a caveat. 
-They can represent entire programs portably, as long as the program does not include any sparse computation where it does not make sense to use a full multidimensional array.
+They can represent entire programs portably as long as the program does not include any sparse computation where it does not make sense to use a full multidimensional array.
 Of course, sparse computations are not so unique that they cannot be written with ``loops and data.''
-Rather, writing sparse codes with PPLs often requires sacrificing their portability.
+Rather, writing sparse codes with PPLs often requires sacrificing the code's portability.
 This is because sparse codes work with data stored in a wide range of formats, each with a different interface.
 Thus, a code written for one format cannot be used for another without changing significant parts of the code.
-Because sparse computations play such a significant role in high-performance computing, representing them portably would be a valuable capability for PPLs\@.
+Because sparse computations play such a prominent role in high-performance computing, representing them portably would be a valuable capability for PPLs\@.
 This chapter explores that possibility.
 I develop a prototype implementation in RAJA of a format-independent interface for writing sparse computations based on the library's approach to writing dense codes.
 While intuitive, the runtime overhead caused by the modifications are too costly.
@@ -21,7 +21,7 @@ I conclude that the decoupling of data and loop abstractions in PPLs must be rel
 %Sparse computations are important.
 Sparse computations --- those that operate on data where ``there is advantage to be taken of the percentage or distribution of zero elements''~\cite{duff1977survey} --- have long been a bottleneck for high performance computing applications. 
 Even as early as 1971, scientists lamented the difficulty of computing with sparse data~\cite{willoughby1971sparse}.
-More than fifty years later, new application domains for sparse computations have garnered attention, including recommendation systems~\cite{he2016fusing} and machine learning~\cite{zhao2018bridging,zhu2019sparse}, and programming sparse applications remains a challenge.
+More than fifty years later, new application domains for sparse computations have garnered attention, including recommendation systems~\cite{he2016fusing} and machine learning~\cite{zhao2018bridging,zhu2019sparse}, yet programming sparse applications remains a challenge.
 Many of these difficulties emerge from the variety of compression strategies used to avoid storing and computing on zero elements.
 
 
@@ -81,7 +81,7 @@ Many of these difficulties emerge from the variety of compression strategies use
 %We need to be able to change sparse data formats,
 Like with dense codes, it is often desirable to change the sparse data format a computation uses.
 Because of their compression strategies, sparse data structures usually do not support constant-time random access.
-Instead, format and schedule are coordinated so that the sparse data is traversed in order, replacing random access with incremental updates to avoid searches and only compute on nonzero entries.
+Instead, format and schedule are coordinated so that the sparse data is traversed in order, replacing random accesses with incremental updates to avoid searches and only compute on nonzero entries.
 This means that in addition to improving memory performance, a good choice of format can improve the algorithmic complexity of a program.
 Changes in algorithm, schedule, machine, and input data all influence which format is best (see Section~\ref{sec:SparseFormats}).
 For performance portability, programmers should be able to easily change sparse data format without rewriting entire loop nests.
@@ -91,7 +91,8 @@ For performance portability, programmers should be able to easily change sparse 
 However, portable sparse performance comes at the cost of more significant refactoring.
 With handwritten codes, changing the sparse format used in a loop nest can involve changes to every single line of code for the loop nest.
 An example of this phenomenon is shown in Listing~\ref{DenseAndSparseMV}, which contains implementations of sparse matrix vector multiplication (SpMV), a key building block for sparse algorithms and a popular evaluation benchmark~\cite{bell2009implementing,buluc2009parallel,liu2013efficient,langr2015evaluation}, for three different formats.
-This effect, already present with a simple kernel and commonplace formats, is amplified as the complexity of the loop nest and format increase.
+The formats are shown graphically in Figure~\ref{FormatDiagram}.
+This effect on refactoring costs, already present with a simple kernel and commonplace formats, is amplified as the complexity of the loop nest and format increase.
 With dense data, no matter the layout, there is a closed form, $O(1)$ complexity function for calculating the location of any element (i.e., typical multidimensional array addressing arithmetic).
 The problem: with sparse formats, there is no constant-time random access.
 Instead, the loops must be reorganized to stream through the sparse data, even if it means indirect accesses into dense data.
@@ -101,16 +102,16 @@ Because the computation is written around streaming through sparse data, most of
   
 %There isn't a performance portable way in RAJA to change sparse formats.
 In RAJA, while there is some support for representing sparse computations, there is not a performance portable way to change sparse formats.
-The \verb.ListSegment. abstraction can be used to iterate over the coordinates of a sparse structures nonzero entries, but requires the loop nest to be flattened to a one-dimensional traversal.
+The \verb.ListSegment. abstraction can be used to iterate over the coordinates of a sparse structure's nonzero entries, but requires the loop nest be flattened to a one-dimensional traversal.
 For a perfectly nested, reorderable computation like SpMV, this is a manageable requirement.
-For a computation with dependences and imperfect nesting, like Gauss-Seidel iterative solve, this requirement becomes much more troublesome.
-Even after wrangling a computation into this representation, changing the format of the sparse data can mean modifying large swaths of code, both within the computation itself and in constructing its iteration space.
+For a computation with dependences and imperfect nesting, like Gauss-Seidel iterative solve, this requirement becomes much more troublesome;
+and even after wrangling a computation into this representation, changing the format of the sparse data can mean modifying large swaths of code, both within the computation itself and in constructing its iteration space.
 
 %Ideally, performance portable sparse format changes would enable computations to access data using the same interface regardless of data format.
 %RAJA's existing multidimensional data interface is a convenient and intuitive target.
-Ideally, performance portable sparse format changes would enable computations to access data using the same interface regardless of data format and layout: dense or sparse.
+Ideally, performance portable sparse format changes would enable computations to access data using the same interface regardless of data format and layout, dense or sparse.
 The existing multidimensional data interfaces in PPLs are a convenient and intuitive target.
-With this approach, the description of a sparse computation would look quite similar to a dense version.
+With this approach, the description of a sparse computation would look quite like a dense version.
 In a similar vein, PPLs already contain interfaces for representing a computation's schedule.
 If support for sparse computations could be built using these existing abstractions, it would create significant programmability benefits.
 The computation would be sparse, but it would look as if it were dense.
@@ -145,8 +146,8 @@ Section~\ref{sec:SparseEval} evaluates the prototype, and Section~\ref{sec:Spars
 
 
 In the world of dense computations, there are not many popular data formats beyond the permuted linear layouts discussed in Chapter~\ref{chap:FormatDecisions}. 
-In fact, Chatterjee et al.\ cover the full gamut in one paper: linear layouts, tiled layouts, and Morton order layouts~\cite{chatterjee1999recursive}.
-Each of these classes of layouts has a constant-time mapping function from the data space to physical memory, based on linear combinations for linear and tiled layouts and bit interleavings for Morton order layouts.
+In fact, Chatterjee et al.\ cover the full gamut in one paper: linear layouts, tiled layouts, and Morton-order layouts~\cite{chatterjee1999recursive}.
+Each of these classes of layouts has a constant-time mapping function from the data space to physical memory, based on linear combinations for linear and tiled layouts and bit interleavings for Morton-order layouts.
 With the ever-growing list of sparse data formats, these mapping functions are not available.
 This section reviews previous contributions to this area of research, highlighting the wide variety of sparse data formats and its impact on writing code using those formats.
 
@@ -156,17 +157,16 @@ This section reviews previous contributions to this area of research, highlighti
 \paragraph{Algorithm}
 
 Some sparse formats are better suited for certain algorithms than others.
-Two examples.
+Three examples.
 First, there are algorithms where hierarchy in the schedule benefit from analogous hierarchy in the organization of the data.
-Gauss-Seidel iteration and triangular solve are examples of this, where the dense traversal over the rows and the sparse traversal over the columns maps well to a format like compressed sparse row. 
+Gauss-Seidel iteration and triangular solve are examples of this, where the dense traversal over the rows and sparse traversal over the columns maps well to a format like compressed sparse row. 
 In contrast, writing Gauss-Seidel iteration is much less intuitive with a format like coordinate storage, where this dimension hierarchy is not present.
 
 Second, there are situations where algorithm and format are developed together.
 One example is Krylov subspace methods and the jagged diagonal format~\cite{saad1989krylov,montagne2004optimal}.
-Here, a level scheduling approach is developed to reorder the nonzeros in the matrix, alongside the jagged diagonal storage format, thus improving the overall performance of the solve.
+Here, a level scheduling approach is developed to reorder the nonzeros in the matrix alongside the jagged diagonal storage format, thus improving the overall performance of the solve.
 
-
-Another example of the impact of algorithm on format occurs in the realm of dense computations.
+The third example of the impact of algorithm on format occurs in the realm of dense computations.
 Some formulations of matrix multiplication algorithms are recursive, and have improved algorithmic complexity compared to the ``textbook'' method.
 These algorithms perform best with formats that are similarly recursive.
 The formats, derived from quad-trees and space-filling curves, provide better performance for these algorithms than linear formats~\cite{chatterjee1999recursive,chatterjee1999nonlinear}.
@@ -178,7 +178,7 @@ The same approach has been used for sparse computations~\cite{alappat2020recursi
 Just as with dense codes, optimal performance of sparse codes depends heavily on making the most of the hardware.
 Before the rise of multi-core processors, GPUs, and other accelerators for high performance computing, the most important hardware consideration was vectorization.
 Vectorization is still important, but in the earliest days, for example on the Cray-1 supercomputer, a program could only be vectorized if the innermost loop accessed data contiguous in memory.
-This meant that formats that used indirection, like compressed sparse row, performed poorly compared to the less space efficient, but contiguously stored banded formats~\cite{duff1982experience}.
+This meant formats that used indirection, like compressed sparse row, performed poorly compared to the less space efficient, but contiguously stored banded formats~\cite{duff1982experience}.
 This helped spur the development of hardware gather/scatter capabilities in the mid to late 1980s~\cite{cleveland1987progress}.
 A vector register could now \enquote{gather} arbitrarily distributed data into a dense block, compute with it, then \enquote{scatter} the results back into a sparse structure. 
 
@@ -209,7 +209,7 @@ These formats leveraged the high throughput and unique memory systems of GPUs.
 
 \paragraph{Data}
 
-Finally, there is the effect of the data itself on how best it is represented.
+Finally, there is the effect of the data's own structure on how best it is represented.
 There are two aspects to this: how sparse the data is (density), and how the data is sparse (distribution).
 
 Some data goes far beyond the extremely sparse, deemed ``hypersparse'' when the number of nonzero entries is less than the number of rows~\cite{buluc2008representation}.
@@ -260,7 +260,7 @@ Format conversion routine generation has also been developed in the tensor algeb
 \paragraph{Generation}
 With formats selected and format conversion code at hand, all that remains is the computation itself.
 Sparse compilation and code generation lower a high-level description of a computation, usually with the format details abstracted away, down to efficient implementations for the necessary formats.
-There were experiments with sparse compilation in the 1970s~\cite{calahan1971description,mchugh1974simpl}, but the true foundations are found in the 90s, with Bik and Wijshoff's complete sparse compilation pipeline~\cite{bik1993compilation, bik1993automatic,bik1996automatic}.
+There were experiments with sparse compilation in the 1970s~\cite{calahan1971description,mchugh1974simpl}, but the true foundations are found in the 1990s, with Bik and Wijshoff's complete sparse compilation pipeline~\cite{bik1993compilation, bik1993automatic,bik1996automatic}.
 The Bernoulli compiler expands on their work.
 They identify the need for two related abstractions, one for describing formats~\cite{kotlyar1997compiling} and another for describing computations~\cite{kotlyar1997relational}.
 Performance portability libraries make a similar distinction, although they do not explicitly recognize the the interaction between the abstractions.
@@ -270,7 +270,7 @@ This is in contrast with PPLs, which are exclusively C++ libraries.
 More recently, the tensor algebra compiler (TACO)~\cite{kjolstad2017tensor} project has gained popularity.
 By limiting the space of computations to tensor expressions, excluding computations with complex dependences, they enable the generation of high performance implementations.
 Using dynamic linking, computation descriptions can be compiled and used by a running program.
-Additional work has developed new format description abstractions~\cite{chou2018format}, temporary storage optimizations~\cite{kjolstad2019tensor}, support for distributed execution~\cite{yadav2022distal}, and autoscheduling~\cite{ahrens2022autoscheduling}.
+Additional work has developed new format description abstractions~\cite{chou2018format}, temporary storage optimizations~\cite{kjolstad2019tensor}, autoscheduling~\cite{ahrens2022autoscheduling}, and support for distributed execution~\cite{yadav2022distal}.
 
 The literature shows a wide variety of sparse formats that are each optimal for a different situation.
 In addition, it shows multiple approaches to representing computations using these formats in a way that enables quick changes to the format in use.
@@ -279,7 +279,7 @@ The next sections develop a prototype doing exactly this in RAJA\@.
 
 \section{Writing Sparse Codes in RAJA}\label{sec:IndexSets}
 
-While plenty of work has targeted converting high-level descriptions of sparse computations into format-specific implementations, none that we are aware of have done so within the context of a performance portability library.
+While plenty of work has targeted converting high-level descriptions of sparse computations into format-specific implementations, none that I am aware of have done so within the context of a performance portability library.
 This section examines RAJA's existing support for sparse computations and illustrates its limitations.
 Most important among them is that RAJA's iteration space interface cannot support multi-dimensional sparse spaces.
 Instead, RAJA requires all sparse code to be written as a flattened, one-dimensional loop nest.
@@ -638,7 +638,7 @@ The hypothesis is that, with sufficient optimization, this approach can provide 
 
 \subsection{The SparseRAJA Interface}
 
-The design constraints with which this approach much contend come from RAJA's existing interface, the need for a unified data access interface, and the connection between the sparse data and the sparse iteration space.
+The design constraints with which this approach much contend come from RAJA's existing interface, the need for a unified data access interface, and the connection between the sparse data and sparse iteration space.
 Thus, the design starts from a dense program written in RAJA, and introduces targeted modifications for the needs of sparse computation.
 I use SpMV as an example here, shown in Listing~\ref{SparseRAJASpMV}.
 
@@ -657,7 +657,7 @@ The second argument is the SparseView that should be used to guide converting th
 The \verb.make_sparse_kernel. function combines these two arguments and generates a computation over the points of the dense iteration space that access a nonzero entry in the SparseView.
 
 \begin{figure}
-\begin{lstlisting}[caption={SpMV kernel written using the SparseRAJA prototype interface. Changes from the dense implementation are highlighted.},label=SparseRAJASpMV]
+\begin{lstlisting}[caption={SpMV kernel written using the SparseRAJA prototype interface.},label=SparseRAJASpMV]
 SparseView<2,double> A = make_sparse_view<COO>(rows, cols, vals);
 
 auto spmvLambda = [&](auto i, auto j) {
