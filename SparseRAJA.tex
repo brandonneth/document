@@ -186,7 +186,7 @@ Distributed, multi-core systems were the next development.
 Adding new elements to the physical hierarchy required new elements in the logical one.
 This led to work developing distributed formats and algorithms for reducing communication needs.
 Erhel presents a parallelized version of GMRES that organizes data distribution to minimize communication~\cite{erhel1995parallel}.
-Karypis and Kumar use graph partitioning to calculate communication-minimizing data distributions~\cite{karypis1998parallel}.
+Also, Karypis and Kumar use graph partitioning to calculate communication-minimizing data distributions~\cite{karypis1998parallel}.
 Ogielski and Aiello use randomized packing algorithms to do the same for sparse matrix multiplications~\cite{ogielski1993sparse}.
 Romero and Zapata generalize dense block and cyclic distributions for sparse matrices~\cite{romero1995data}.
 
@@ -381,7 +381,7 @@ This is because skipping the diagonal entry in the inner loop then accessing it 
 
 \begin{figure*}
 
-  \begin{subfigure}{0.48\columnwidth}
+  \begin{subfigure}{0.44\columnwidth}
 \begin{lstlisting}[caption={C++ reference implementation of dense Gauss-Seidel iterative solve loop nest.}]
 void dense_gauss_seidel_CPP(...) {
   <@\color{green}{double temp;}@>
@@ -396,7 +396,7 @@ void dense_gauss_seidel_CPP(...) {
 \end{lstlisting}
   \end{subfigure}
   \hspace{0.02\columnwidth}
-  \begin{subfigure}{0.48\columnwidth}
+  \begin{subfigure}{0.49\columnwidth}
 \begin{lstlisting}[caption={RAJA reference implementation of dense Gauss-Seidel iterative solve.}]
 void dense_gauss_seidel_RAJA(...) {
   <@\color{green}{double temp;}@>
@@ -508,7 +508,7 @@ This enables the conditional check to be removed, because only the non-diagonals
 Because the format is specialized to the computation and sparse multidimensional looping is possible with standard C++, this code is recognizable when compared to the dense implementations.
 This is not the case with the RAJA version.
 
-The second sparse implementation uses RAJA's existing support for sparse computations with the same specialized format.
+The second implementation uses RAJA's existing support for sparse computations with the same specialized format.
 Here, the code is functionally unrecognizable.
 This is the product of the tension between the actual format of the data (diagonal CSR) and the COO-style requirements of sparse RAJA code.
 Because the loop nest must be flattened to one dimension, the initialization and finalization statements in the original loop nest need to be handled as conditionals within the single loop body.
@@ -650,7 +650,7 @@ While the initialization of SparseViews is slightly different from the initializ
 SparseViews handle the traversal of their data within their call operator, allowing their use within computations to remain unchanged.
 Changing sparse formats is as easy as changing the template parameter from \verb.COO. to \verb.CSR. or \verb.DIAG..
 
-The only other change to the computation description is the use of \verb.make_sparse_kernel. instead of \verb.make_kernel. to generate the computation object.
+The only other change to the computation description is using \verb.make_sparse_kernel. instead of \verb.make_kernel. to generate the computation object.
 The sparse kernel variant takes the same arguments as the dense kernel variant, with one addition.
 The first argument to \verb.make_sparse_kernel. is the dense iteration space.
 The second argument is the SparseView that should be used to guide converting the dense iteration space to a sparse one.
@@ -825,7 +825,7 @@ Finally was the modification discussed briefly in Section~\ref{sec:SparseSegment
 Instead of having the follow segments pull their values from the lead segments, the lead segments now push the updated values to the follow segments.
 This reduced overhead of the Gauss-Seidel DIAG benchmark on Quartz from $2.05\times$ to its current $1.75\times$.
 
-\section{More Coupling in Loop and Data Access Abstractions Needed}\label{sec:SparseDiscussion}
+\section{More Coupling Needed in Loop and Data Access Abstractions}\label{sec:SparseDiscussion}
 
 Addressing the performance issues present in the SparseRAJA prototype would require more significant modification to the library's data and loop abstractions.
 The sources of overhead --- conditional checks in the data access functions and the dynamic updates within the iteration space traversal --- come from the need to couple the iteration space and schedule with the data distribution and access.

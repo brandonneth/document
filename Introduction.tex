@@ -32,7 +32,7 @@ This sacrifice of portability for performance is also present for a programmer w
 This dissertation seeks to remedy these problems, introducing abstractions to support cross-loop schedule and data transformations and laying the foundation for native support for sparse computations within a representative performance portability library, RAJA\@.
 This chapter introduces the programming model of the RAJA library, the limitations of PPLs, and RAJA in particular, and the contributions made in the subsequent chapters. 
 
-\section{Programming with Performance Portability Libraries}
+\section{Using Performance Portability Libraries}
 
 Performance portable libraries (PPLs) are driven by the need to create modularized and easily-tuned code.
 This is achieved through a process of decomposing the computation into separable parts.
@@ -117,7 +117,6 @@ kernel<SequentialPolicy>(iterationSpace, stencilLambda);
 std::array<size_t, 2> dimLengths = {N,M};
 
 // Create the layout type...
-
 <@\hl{-}@> <@\st{Layout<2> rowMajor = make\_layout(dimLengths, \{0,1\}); // dim0, then dim1}@>
 <@\hl{+}@> Layout<2> <@\hl{col}@>Major = make_layout(dimLengths, <@\hl{\{1,0\}}@>); // dim1, then dim0
 
@@ -178,7 +177,7 @@ for(int i = 1; i < N-1; i++) {
 \end{lstlisting}
 \end{figure}
 
-First, I describe the abstractions in performance portability libraries for multidimensional data.
+First, I describe the performance portability library abstractions for multidimensional data.
 Then, the layout transformations, like switching between row- and column-major storage, they enable.
 Multidimensional data is exceedingly common in simulation codes.
 However, a computer's memory is addressable only as a one-dimensional sequence of bytes.
@@ -368,7 +367,7 @@ Extras spill into memory, with performance implications.
 Because different processors have different register designs, a fusion transformation beneficial for one machine may not be for others.
 Furthermore, loop fusion can interfere with the parallelization of the loops being fused.
 
-Newer transformations, like overlapped tiling~\cite{holewinski2012high,krishnamoorthy2007effective}, have been developed to achieve the locality improvements of loop fusion while maintaining sufficient parallelism.
+Newer transformations, like overlapped tiling~\cite{holewinski2012high,krishnamoorthy2007effective}, have been developed to achieve the locality improvements of loop fusion while maintaining parallelism.
 Overlapped tiling does this by introducing small amounts of recomputation.
 In this transformation, each tile overlaps with those next to it, sharing some points of the iteration space.
 By choosing tile sizes that keep the fraction of recomputation low, parallel execution of the tiles still benefits from improved locality.

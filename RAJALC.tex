@@ -1048,9 +1048,9 @@ overlapping computations, which reduces communication and improves load
 balance.
 
 %[Image processing pipelines, which are also stencil applications.  
-Embedded DSLs for image processing pipelines, such as
+Embedded DSLs for image processing pipelines such as
 Halide~\cite{ragan-kelley2013halide} and
-PolyMage~\cite{mullapudi2015polymage}, support orthogonally specifying and
+PolyMage~\cite{mullapudi2015polymage} support orthogonally specifying and
 scheduling stencil computations.
 By exposing separate mechanisms for scheduling them, PolyMage supports
 various scheduling, fusion, and tile size selection
@@ -1107,7 +1107,7 @@ A similar drawback applies to embedded DSLs that use their own compilers, such a
 %%%%%
 \subsection{Staging and Other Loop Chain Approaches}
 
-The most related work to this submission is work that gathers representations of computations and other work that aims to specify and optimize loop chains.
+The most related work to this chapter is work that gathers representations of computations and other work that aims to specify and optimize loop chains.
 Lightweight modular staging~\cite{LMS2012} presented an approach for gathering 
 a representation of computation to enable scheduling across that implementation
 in Scala.

@@ -1,11 +1,12 @@
 \chapter{Data Transformations}\label{chap:FormatDecisions}
 
-On today's high performance architectures, using the memory hierarchy effectively is a great challeng with a great reward.
+On today's high performance architectures, using the memory hierarchy effectively is a great challenge with a great reward.
 When performance considerations --- architecture, memory hierarchy configuration, even input data characteristics --- are hard-coded into the application, improved memory performance comes at the cost of maintainability and portability.
 This is especially relevant for schedule and data optimizations that are applied across loops, where the optimization obscures the underlying operation of the code.
 To address this problem, performance portability libraries like RAJA, Kokkos, and YAKL provide abstractions for controlling how loops are scheduled/parallelized and how data is laid out initially. 
 However, they do not support changing data layouts between loops without significant manual intervention.
 This chapter's focus is on data layout transformations among canonical data layouts and the challenges inherent in enabling their high-level control within performance portability libraries, using RAJA as an example.
+
 First, I introduce programming abstractions into the RAJA library to collect and apply data format transformations between kernels.
 Then, I incorporate a built-in performance model for as-automated-as-desired transformation selection. 
 Finally, to support key computations that benefit from these layout transformations, I extend RAJA's iteration space description to support loops with non-rectangular iteration spaces.
@@ -26,7 +27,7 @@ When optimizing code by hand, these transformations are onerous to implement.
 The original, modularized implementation of a computation is obscured by the changes of implementing the transformation. 
 When a code is meant to run on multiple systems or evolve to support new features, these optimizations can end up being more trouble than they are worth, the performance improvement offset by the increased maintenance and porting costs.
 
-Performance portability libraries (PPLs) --- like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} --- partially address this problem.
+Performance portability libraries (PPLs) like RAJA~\cite{hornung2014RAJA}, Kokkos~\cite{edwards2014kokkos}, and YAKL~\cite{norman2022portable} partially address this problem.
 By breaking the description of a computation into separable components, programmers can experiment with different schedules and layouts without obscuring the code's underlying operation.
 However, control of the layout of data is limited to a global scope; data cannot be reorganized with different layouts throughout a computation.
 Should they wish to change the data layout mid-program, they would have to use multiple arrays for the same data, ensuring that each maintain the correct contents.
@@ -64,12 +65,13 @@ This chapter makes the following contributions:
 \end{itemize}
 
 I begin with an overview of performance portability library data abstractions, and RAJA's in particular (Section 2).
-Then, I expand the iteration space abstractions to support computations with relations between loop dimensions (Section 3).
-Next, I introduce an interface for user-specified layout transformations between computations (Section 4).
-This interface incorporates optional runtime modeling based on microbenchmarking to augment user choices without overriding them.
-I build on existing automated approaches and make two key optimizations: one to reduce the number of model coefficients and one to reduce the number of model variables and constraints (Section 5).
-Then, I sketch how the \FormatDecisions{} system might be used in a production code base (Scetion 6).
-Finally, I evaluate the model's accuracy and performance, as well as the entire system's performance and productivity for six benchmark kernels and one application case study (Section 7).
+Next, I introduce an interface for user-specified layout transformations between computations (Section 3).
+This interface incorporates runtime modeling based on microbenchmarking to augment user choices without overriding them.
+I build on existing automated approaches and make two key optimizations: one to reduce the number of model coefficients and one to reduce the number of model variables and constraints (Section 4).
+This section also includes an evaluation of the model's performance.
+Then, I sketch how the \FormatDecisions{} system might be used in a production code base (Section 5).
+I evaluate the systems's accuracy and performance for six benchmark kernels (Section 6).
+Finally, I present the expanded iteration space abstractions for supporting computations with relations between loop dimensions (Section 7).
 I then review related work (Section 8), and conclude (Section 9).
 
 
@@ -92,9 +94,10 @@ The \verb.View. object in Kokkos also uses a template parameter to specify the m
 Kokkos has \verb.LayoutRight. for row-major storage, \verb.LayoutLeft. for column-major, and \verb.LayoutStride. for layouts with arbitrary dimensional strides.
 In RAJA, the \verb.View. object is templated by a layout type as well, but the layout type itself does not specify the ordering of the dimensions. 
 Instead, layout objects are instantiated at runtime with dimensional orderings and associated with the View when it is initialized.
-This chapter is implemented in RAJA, which, combined with limitations of the symoblic evaluation capabilities presented in Chapter 2, lead to some assumptions about codes that use \FormatDecisions{}.
+
 
 \subsection{Assumptions}
+This chapter is implemented in RAJA, which, combined with limitations of the symbolic evaluation capabilities presented in Chapter 2, lead to some assumptions about codes that use \FormatDecisions{}.
 The \FormatDecisions{} system makes the following assumptions/requirements about the user program:
 \begin{itemize}
 \item Each array in the program can be modeled independently. \FormatDecisions{} sets up and solves one optimization problem per array and does not model interactions between arrays. For example, using two View objects sharing the same underlying sections of memory are prohibited.
@@ -133,7 +136,7 @@ computation();
 \end{lstlisting}
 \end{figure}
 
-RAJA's existing support for changing data layouts is limited to the point of instantiation.
+RAJA's current support for changing data layouts is limited to the point of instantiation.
 This work removes that barrier by providing a declarative data optimization system for specifying layout transformations between loops.
 By combining user-guided layout specifications with optional automated support, \FormatDecisions{} gives the programmer more control over the optimization of their program.
 
@@ -209,11 +212,11 @@ This is because the benefit of using the optimal layout for a loop nest must be 
 The challenge is further compounded by architectural differences that can affect both the cost of conversion and which layout will perform optimally.
 The difficulty of this comparison lends itself to runtime automation.
 
-Automating the layout selection problem, like many other decision problems, follows a two-step process: generate a set of valid solutions, then search the set for the best one.
-Different problems operationalize these two steps in different ways, but a common approach is to model the decision problem as an integer linear programming (ILP) problem.
+Automating the layout selection problem, like many other optimization problems, follows a two-step process: generate a set of valid solutions, then search the set for the best one.
+Different problems operationalize these two steps in different ways, but a common approach is to model the problem as an integer linear programming (ILP) problem.
 An ILP problem consists of a set of integer variables representing decision components, linear constraints over those variables representing the relationships between parts of the decision, and a linear objective function representing the costs of making different choices.
 The solution to an ILP problem is a mapping of variables to values that satisfies the constraints and minimizes the objective function.
-Once the solution to the ILP model has been identified, it can be mapped back to an optimal answer to the original decision problem.
+Once the solution to the ILP model has been identified, it can be mapped back to an optimal answer to the original optimization problem.
 
 Bixby, Kennedy, and Kremer (BKK) develop such a formulation for the layout selection problem~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic}.
 They use a restricted type of ILP problem, known as a 0--1 ILP problem, that only uses binary variables.
@@ -228,7 +231,7 @@ Remapping switches are also constrained to match the layout switches.
 For example, if the row-major switch is turned on for both the first and second phase, the row-to-column-major remapping switch cannot be turned on.
 
 Using this ILP model, valid solutions to the layout selection problem are represented by constraint-satisfying configurations of the switches.
-For a $D$-dimensional array over $N$ loop nests, there are $D!*(N+1)$ such valid solutions, some better than others.
+For a $D$-dimensional array over $N$ loop nests, there are $D!^{N+1}$ such valid solutions, some better than others.
 The objective function makes it possible to compare the quality of different solutions, ultimately leading to the best possible choice.
 In the BKK formulation, the objective function is a sum of products, with one term for each switch.
 Each layout variable is multiplied by a coefficient representing the estimated cost of using that layout for that phase.
@@ -285,7 +288,7 @@ This is because a conversion from one layout to another can naturally be viewed 
 Thus, the cost coefficient becomes the size of the array multiplied by the sum of the two access estimates.
 
 
-\subsection{Candidate Layout Selection}\label{sec:candidateSelection}
+\subsection{Candidate Layout Selection}\label{sec:candidateSelection}\label{generationScheme}
 
 The second modification refines how the model determines which layouts to include as candidates for selection.
 The BKK formulation does not detail how their model makes this choice, but only discusses two-dimensional data, where there are only two possible orderings.
@@ -312,6 +315,7 @@ This excludes the identity transformation.
 Second, different architectures perform better with different stride lengths.
 While a CPU will do well with low-stride accesses, a GPU will perform better with large-stride accesses.
 Because repeated rotation generates options where every dimension shows up once in each position, it is guaranteed to produce a wide range of stride lengths.
+Additionally, it means each dimension of the array gets a chance in the innermost loop.
 Finally, rotation is a staple, comprehensible transformation with transparent behavior.
 This makes for easier reasoning about the model's decisions.
 While it is possible that rotation will not surface the maximally performant layout for higher-dimensional data, the layout options it produce are a launching point for further experimentation.
@@ -344,7 +348,7 @@ This only leaves the terms containing remapping variables in the objective funct
 These are replaced with equivalent terms that encode the removed constraints.
 A remapping variable can only be switched on when the layout variables corresponding to its input and output are switched on.
 This is a familiar operator: logical and --- or in the realm of boolean algebra, multiplication.
-For example, all occurances of the remapping variable representing converting from row- to column-major between phases 1 and 2, $remap_{rowmjr \rightarrow colmjr}^{phase1 \rightarrow phase2}$, would be replaced by the product $layout_{rowmjr}^{phase1} * layout_{colmjr}^{phase2}$.
+For example, all occurrences of the remapping variable representing converting from row- to column-major between phases 1 and 2, $remap_{rowmjr \rightarrow colmjr}^{phase1 \rightarrow phase2}$, would be replaced by the product $layout_{rowmjr}^{phase1} * layout_{colmjr}^{phase2}$.
 Thus, a replacement scheme can replace remapping variables in the objective function with products of layout variable.
 This produces a nonlinear function, as it multiplies variables by other variables, but reduces the number of decision variables in the problem by a square factor.
 
@@ -381,7 +385,7 @@ This produces a nonlinear function, as it multiplies variables by other variable
 \end{lstlisting}
 \end{figure}
 
-An demonstration of the layout selection problem and the approach to solve it is instructive.
+A demonstration of the layout selection problem and the approach to solve it is instructive.
 Consider the loop chain in Listing~\ref{SelectionExampleCode}, which calculates a series of matrix multiplications ($T1 = A * B$, $T2 = T1 * A$, and $T3 = A^\top * T2$).
 The layout selection problem in this subsection will target the \verb.A. View, used in all three kernels in the example.
 We construct the constrained decision space, then use microbenchmarking to construct the objective function.
@@ -392,7 +396,7 @@ Within the system, these are represented as dimensional orderings --- $(0,1)$ an
 
 \paragraph{Decision Variables}
 Once the candidate layouts have been identified, we can create the layout decision variables.
-For each phase of the computation, including the input and ouput phases, there is one variable for each layout.
+For each phase of the computation, including the input and output phases, there is one variable for each layout.
 The subscript indicates the layout while the superscript indicates the phase. 
 The 0 phase represents the input layout, while the $N+1$ phase represents the output layout.
 For example, the $k_{col}^{3}$ variable indicates whether or not the array will use column-major order during the third phase (\verb.knl3.).
@@ -547,11 +551,15 @@ Loop depth and memory footprint have no impact on modeling time, while access co
 	\caption{Changes in modeling time for data with different numbers of dimensions.}\label{DataDimensionality}
 \end{figure}
 The first parameter is the dimensionality of the data, varying in Figure~\ref{DataDimensionality} from two to six, the maximum dimensionality found in a production code (QCD).
-The hypothesis is that the modeling time for the heuristic-driven model will increase linearly with the number of dimensions, because the number of variables is a linear function of the data's dimensionality.
-This hypothesis is partially supported by the results.
-Without reducing the set of candidate layout using the rotation heuristic, the execution reaches timeout before completing for four, five, and six dimensions.
-For the version using the rotation heuristic, the solve time scales linearly with the dimensionality because the number of decision variables increases linearly with the dimensionality.
-The cost estimation time scales faster than linearly. 
+For the model using the rotation heuristic, the hypothesis is that the cost estimation time will scale linearly with dimensionality.
+Cost estimation should scale linearly because each candidate layout only needs to be modeled one time and there are as many candidate layouts as dimensions due to the rotation heuristic.
+Next, the hypothesis is that the solve time will scale with $NumDims^{NumLoops}$, here $NumDims^2$, as there are two loops in this experiment.
+This is because solving time should be proportional to the number of possible solutions the model has to choose from.
+The results partially support these hypotheses.
+Without reducing the set of candidate layout using the rotation heuristic, the execution reaches timeout before completing for four, five, and six dimensional data. 
+This is because without using the rotation heuristic, there are $NumDims!$ candidate layouts for each loop, so the number of possible options the model has to evaluate scales with $(NumDims!)^{NumLoops}$.
+For the version using the rotation heuristic, the solve time scales with the square of the dimensionality, which aligns with the hypothesis.
+However, the cost estimation time scales faster than linearly. 
 This may be caused by the increase in indexing calculation complexity as the dimensionality increases.
 For example, each indexing expression in a 2D access calculates $i_1 + i_0 * N_1$, while a 4D access calculates $i_3 + i_2 * N_3 + i_1 * N_2 * N_3 + i_0 * N_1 * N_2 * N_3$.
 
@@ -562,7 +570,7 @@ For example, each indexing expression in a 2D access calculates $i_1 + i_0 * N_1
 \end{figure}
 The next experiment, shown in Figure~\ref{LoopCount}, shows the modeling time for loop chains with between one and eight loop nests.
 For this experiment, all loop nests are three-dimensional and make three accesses to two-dimensional arrays of $100\times100$ doubles. 
-This size was selected to comfortably fit all data within cache.
+This size was selected to comfortably fit all data within L1 cache.
 No user constraints are added.
 Because each new loop nest multiplies the number of possible paths by the number of candidates, the expected behavior is an exponential growth in solve time, which the results supports.
 This experiment illustrates the execution time savings of eliminating the remapping variables from the model.
@@ -633,7 +641,7 @@ Meant to be run with full production inputs, it uses previous layout decision fi
 Like the training mode, it writes the decisions to file, so that later runs can reuse the results.
 With this scheme, newly encountered code paths will incur modeling costs for a single run, but not thereafter.
 
-Returning to the problem of decision I/O, the key insight is that each \FormatDecisions{} object has a unique type in C++.
+Returning to the problem of decision I/O, the key insight is that each decision object has a unique type in C++.
 This is because its type contains the types of all the kernels within it, in the same way that the \verb.int. type is part of a \verb.std::vector<int>. type.
 Two \FormatDecisions{} objects created from different kernels, or even from the same kernels in a different order, will have different types, much like a \verb.std::map<int, double>. object is a different type from a \verb.std::map<double, int>..
 Thus, the decisions can be indexed by hashing the type of the \FormatDecisions{} object with which the decisions are associated.
@@ -647,15 +655,15 @@ This evaluation measures two features: model choice accuracy and system overhead
 Model choice accuracy refers to the accuracy of the runtime performance model by comparing the model decisions against those made by a heuristic-based hand-tuned variant.
 This also includes the performance impacts of the model choosing different layouts.
 System overhead refers to the runtime overhead from using the \FormatDecisions{} system.
-I report two sources of overhead here: ILP overhead from setting up and solving the ILP problem and overhead from the layout selection abstractions.
-Runtime microbenchmarking is included in the ILP overhead measurement.
-Overall, for small problem sizes, ILP overhead was between $300\%$ and $700\%$ the performance improvement achieved by the transformation, meaning it was not able to amortize the cost.
-For large problem sizes, ILP overhead was less than $25\%$.
+I report two sources of overhead here: nonlinear optimization problem (NOP) overhead from setting up and solving the NOP problem and overhead from the layout selection abstractions.
+Runtime microbenchmarking is included in the NOP overhead measurement.
+Overall, for small problem sizes, NOP overhead was between $300\%$ and $700\%$ the performance improvement achieved by the transformation, meaning it was not able to amortize the cost.
+For large problem sizes, NOP overhead was less than $25\%$.
 Abstraction overhead was less than $30\%$ of the performance improvement across the board and negligible for large problem sizes.
 
 \subsection{Experimental Design}
 
-I evaluate the \FormatDecisions{} system using six benchmark kernels from the Polybench~\cite{pouchet2012polybench} benchmark suite: \textsc{2mm}, \textsc{3mm} \textsc{correlation}, \textsc{covariance}, \textsc{doitgen}, and \textsc{symm}.
+I evaluate the \FormatDecisions{} system using six benchmark kernels from the polyhedral benchmark suite Polybench~\cite{pouchet2012polybench}: \textsc{2mm}, \textsc{3mm} \textsc{correlation}, \textsc{covariance}, \textsc{doitgen}, and \textsc{symm}.
 \textsc{2mm} solves the matrix expression $A*B*C$ using two matrix multiplications. 
 First, it computes $A*B$ and stores the results in a temporary array.
 Then this temporary result is multiplied by $C$.
@@ -675,7 +683,7 @@ The third variant, ``Model Run'', uses the fully automatic \FormatDecisions{} sy
 The only layout information provided to the model are the output formats for the data.
 The fourth variant, ``Model Skipped'', uses the \FormatDecisions{} interface to fully specify the layout transformations given by the performance model, but uses the results of a previous model run.
 Thus, this variant does not include overhead from running the performance model.
-The difference between the execution times of the ``Hand Tuned'' and ``Model Skipped'' variants is the abstraction overhead, while the difference between the ``Model Skipped'' and ``Model Run'' variants is the ILP overhead.
+The difference between the execution times of the ``Hand Tuned'' and ``Model Skipped'' variants is the abstraction overhead, while the difference between the ``Model Skipped'' and ``Model Run'' variants is the NOP overhead.
 
 
 \subsection{Evaluation Methodology: Machine Characteristics}
@@ -764,10 +772,10 @@ Figure~\ref{quartzSpeedups} shows the execution times for the four variants on t
 For model accuracy, the only mismatches between the model-selected layout transformations and the hand-tuned heuristic selection were for the \textsc{3mm} variant.
 For this benchmark, one of the target arrays, \verb.B., is only used in the first loop nest. 
 Thus, the ``Hand Tuned'' variant converts to column-major before the first loop nest and back to row-major at the end of the entire loop chain.
-The ILP model chooses to convert to column-major before the first loop nest, but immediately goes back to row-major instead of converting at the end of the loop chain.
+The NOP model chooses to convert to column-major before the first loop nest, but immediately goes back to row-major instead of converting at the end of the loop chain.
 Because the \verb.B. array is not used between the point the model chooses and the point the heuristic chooses, the difference does not affect the performance.
 
-With regards to overhead, the ILP overhead (``Model Run'' vs ``Model Skipped'') was most significant for small problem sizes, especially for the \textsc{2mm}, \textsc{3mm}, \textsc{doitgen}, and \textsc{symm} kernels.
+With regards to overhead, the NOP overhead (``Model Run'' vs ``Model Skipped'') was most significant for small problem sizes, especially for the \textsc{2mm}, \textsc{3mm}, \textsc{doitgen}, and \textsc{symm} kernels.
 On average, for the smallest problem size, the modeling overhead was $387\%$ of the performance improvement achieved by the ``Hand Tuned'' variant.
 This indicates that it is not possible to amortize the performance modeling cost for small problem sizes.
 However, as the problem size increased, this overhead became less significant, as the solve time is constant no matter the problem size.
@@ -780,11 +788,11 @@ Figure~\ref{lassenSpeedups} shows the results for the Lassen system.
 The \textsc{3mm} benchmark produced the same mismatch between the heuristic choices and the model choices as on Quartz.
 Otherwise, the model made the same choices as the heuristic-based approach.
 
-Similar to the Quartz results, the ILP overhead was only significant for small problem sizes.
-At the smallest size, the ILP overhead was $603\%$ of the performance improvement of the hand-tuned variant, meaning the ``Model Run'' variant took longer to execute that the baseline ``RAJALC'' variant.
+Similar to the Quartz results, the NOP overhead was only significant for small problem sizes.
+At the smallest size, the NOP overhead was $603\%$ of the performance improvement of the hand-tuned variant, meaning the ``Model Run'' variant took longer to execute that the baseline ``RAJALC'' variant.
 The abstraction overhead was smaller, at $26\%$ of the performance improvement of the hand-tuned variant.
 This means that it still saw performance improvement compared to the ``RAJALC'' variant, but less than the ``Hand Tuned'' variant.
-For the largest problem size, the ILP overhead was much smaller, costing only $4.3\%$ of the hand-tuned performance improvement.
+For the largest problem size, the NOP overhead was much smaller, costing only $4.3\%$ of the hand-tuned performance improvement.
 Like on Quartz, some benchmarks saw even greater performance improvements from using the \FormatDecisions{} abstraction without running the model.
 On average, for the largest problem size, the ``Model Skipped'' variant saw $1.1\%$ improvement over the ``Hand Tuned'' variant.
 
@@ -809,49 +817,9 @@ auto segments = make_tuple(iSeg, jSeg);
 \end{figure}
 
 \begin{figure}
-\begin{subfigure}{0.4\columnwidth}
-\begin{tikzpicture}
-\foreach \x in {-1,0,1,2,3,4,5}
-\foreach \i in {-2,-1,0,1,2,3,4,5}
-	\filldraw [gray] (\x, \i) circle (2pt);
-\draw[thick,<->] (-0.5,0) -- (4.5,0) node[anchor=north west] {x};
-\draw[thick,<->] (0,-0.5) -- (0,4.5) node[anchor=south east] {y};
-\foreach \x in {0,1,2,3,4}
-	\draw (\x cm,1pt) -- (\x cm,-1pt) node[anchor=north west] {$\x$};
-\foreach \i in {0,1,2,3,4}
-	\draw (1pt,\i cm) -- (-1pt,\i cm) node[anchor=south east] {$\i$};
-	
-\draw [black, very thick] (0,-1) -- (2,3) -- (4,-1) -- (0,-1);
-\end{tikzpicture}
-\caption{Graphical depiction of iteration space with dependent $x$ dimension.}\label{triangularIterationSpace1}
-\end{subfigure}
-\hspace{0.05\columnwidth}
-\begin{subfigure}{0.55\columnwidth}
-\begin{subfigure}{\columnwidth}
-\begin{align}
-	-1 \leq &y < 4 \\
-	(1 + y) * 0.5 \leq &x \leq (7 - y) * 0.5
-\end{align}
-\caption{Constraint description of iteration space from~\ref{triangularIterationSpace1}.}\label{constraintDescription1}
-\end{subfigure}
 
-\vspace{20pt}
 
-\begin{subfigure}{\columnwidth}
-\begin{lstlisting}[]
-auto y_seg = make_symbolic_segment(-1,4);
-auto x_seg = make_symbolic_segment_inclusive(
-							(y_seg + 1) * 0.5, 
-							(7 - y_seg) / 2);
-auto segments = make_tuple(y_seg, x_seg);
-\end{lstlisting}
-\caption{Description of iteration space from~\ref{triangularIterationSpace1} using symbolic segments.}\label{symseg1}
-\end{subfigure}
-\end{subfigure}
-
-\vspace{10pt}
-
-\begin{subfigure}{0.4\columnwidth}
+\begin{subfigure}{0.41\columnwidth}
 \begin{tikzpicture}
 \foreach \x in {-1,0,1,2,3,4,5}
 \foreach \y in {-2,-1,0,1,2,3,4,5}
@@ -868,7 +836,7 @@ auto segments = make_tuple(y_seg, x_seg);
 \caption{Graphical depiction of iteration space with dependent $y$ dimension.}\label{triangularIterationSpace2}
 \end{subfigure}
 \hspace{0.05\columnwidth}
-\begin{subfigure}{0.55\columnwidth}
+\begin{subfigure}{0.50\columnwidth}
 \begin{subfigure}{\columnwidth}
 \begin{align}
 	1 \leq &x < 5 \\
@@ -890,13 +858,13 @@ auto segments = make_tuple(x_seg, y_seg);
 \caption{Description of iteration space from~\ref{triangularIterationSpace2} using symbolic segments.}\label{symseg2}
 \end{subfigure}
 \end{subfigure}
-\caption{Two examples of representable triangular iteration spaces.}\label{goodTriangles}
+\caption{An example of a representable triangular iteration space.}\label{goodTriangles}
 \end{figure}
 
 
 
 \begin{figure}
-\begin{subfigure}{0.4\columnwidth}
+\begin{subfigure}{0.42\columnwidth}
 \begin{tikzpicture}
 \foreach \x in {-1,0,1,2,3,4,5}
 \foreach \y in {-2,-1,0,1,2,3,4,5}
@@ -912,8 +880,8 @@ auto segments = make_tuple(x_seg, y_seg);
 \end{tikzpicture}
 \caption{Graphical depiction of quadrilateral iteration space with dependent $y$ dimension.}\label{trapezoidIterationSpace1}
 \end{subfigure}
-\hspace{0.05\columnwidth}
-\begin{subfigure}{0.55\columnwidth}
+\hspace{0.01\columnwidth}
+\begin{subfigure}{0.53\columnwidth}
 \begin{subfigure}{\columnwidth}
 \begin{align}
 	0 \leq &x < 4 \\
@@ -983,7 +951,7 @@ A segment that uses an outer loop index as its lower bound replaces it as expect
 
 
 \begin{figure}
-	\begin{subfigure}{0.5\columnwidth}
+	\begin{subfigure}{0.41\columnwidth}
 	\begin{tikzpicture}
 	\foreach \x in {-1,0,1,2,3,4,5}
 	\foreach \y in {-1,0,1,2,3,4,5}
@@ -999,6 +967,7 @@ A segment that uses an outer loop index as its lower bound replaces it as expect
 	\end{tikzpicture}
 	\caption{Nonrepresentable skewed iteration space.}\label{skewedIterationSpace}
 	\end{subfigure}
+	\hspace{0.01\columnwidth}
 	\begin{subfigure}{0.5\columnwidth}
 	\begin{subfigure}{\columnwidth}
 	\begin{align}
@@ -1010,6 +979,8 @@ A segment that uses an outer loop index as its lower bound replaces it as expect
 	\caption{Constraint description of iteration space in~\ref{skewedIterationSpace}}\label{constraintDescription3}
 	\end{subfigure}
 	
+	\vspace{10pt}
+
 	\begin{subfigure}{\columnwidth}
 	\begin{lstlisting}
 	for (int c1 = 0; c1 <= 4; c1 += 1) {
@@ -1039,7 +1010,7 @@ codegen (Schedule * Domain);
 
 
 While symbolic segments enable the description of more loop nests than RAJA's base support, there are still iteration spaces that cannot be represented with them.
-For example, iteration spaces resulting from loop skewing, often used to enable wavefront parallelism~\cite{wolf1991loop}, cannot be represented in this framework. 
+For example, iteration spaces resulting from loop skewing (Figure~\ref{badShapes}), often used to enable wavefront parallelism~\cite{wolf1991loop}, cannot be represented in this framework. 
 Generally, iteration spaces that require the use of \verb.min. and \verb.max. in the description of the bounds are not supported by symbolic segments.
 One approach to representing iteration spaces of this type is to describe the iteration space as a set of arbitrary linear constraints~\cite{verdoolaege2012polyhedral}.
 This avoids the presence of \verb.min. and \verb.max. calls within the user's program.
@@ -1051,37 +1022,37 @@ Because these polyhedra are rare in practice --- not appearing within the benchm
 Symbolic segments enable PPLs to represent computations that were previously unavailable.
 Using an interface based on the existing iteration space description in the RAJA library, they leverage a lazy evaluation strategy to calculate the bounds of a loop level only when needed.
 One important pattern symbolic segments support is the triangular iteration space, found in three of the six evaluation benchmarks of Section~\ref{fdEval}.
-Beyond enabling the decsription of triangular iteration spaces, symbolic segments form the basis upon which I develop support for representing sparse iteration spaces central to the next chapter.
+Beyond enabling the description of triangular iteration spaces, symbolic segments form the basis upon which I develop support for representing sparse iteration spaces central to the next chapter.
 
 \section{Related Work}
 
-The approach used in this chapter to provide library-level abstractions for layout transformations is most closely related to the inspector-executor pattern found in sparse computations~\cite{strout2018sparse}.
-In codes with sparse data, the distribution of the nonzero data heavily influences the most performant schedule and data alyout, but is not known until runtime.
+The approach used in this chapter to provide library-level abstractions for controlling data layout is most closely related to the inspector-executor pattern found in sparse computations~\cite{strout2018sparse}.
+In codes with sparse data, the distribution of the nonzero data heavily influences the most performant schedule and data layout, but is not known until runtime.
 The inspector-executor pattern resolves this dilemma by breaking a computation into an inspector phase, which analyzes the structure of the data, and an executor phase, which uses the results to select from different possible implementations.
 This approach has traditionally been used to aid in parallelizing sparse codes~\cite{ujaldon1996parallelization,fu1996run,venkat2016automating}.
 However, Venkat, Hall, and Strout have used it to select data transformations~\cite{venkat2015loop}.
 \FormatDecisions' use of runtime performance modeling (inspecting) to determine the data layouts to use for the computation (executing) uses this pattern for a different class of computation.
 It is also related to work on scheduling and data transformations, polyhedral compilation, and domain-specific languages.
 
-\subsubsection{Schedule Transformations}
+\paragraph{Schedule Transformations}
 Early approaches to optimizing data locality use schedule transformations rather than data layout transformations. 
 Work incorporated into the SUIF compiler uses interchange, reversal, skewing, and tiling~\cite{wolf1991data}, whereas Fortran source-to-source approaches also use loop fusion~\cite{mckinley1996improving}.
 While schedule transformations avoid the overhead cost of layout conversion, their global nature can improve locality for one access while harming another.
 Nevertheless, schedule transformations remain a popular approach to optimizing data locality and parallelism, 
 especially through tiling techniques~\cite{bondhugula2008pluto,bertolacci2015parameterized,bondhugula2016diamond,bandishti2012tiling,unat2016tida}.
 
-\subsubsection{Layout Transformation in HPF}
+\paragraph{Layout Transformation in HPF}
 In the domain of data layout transformations, early work in High Performance Fortran (HPF) and D compilers~\cite{bixby1994automatic,kennedy1995automatic,kennedy1998automatic} provide foundations for a variety of later approaches.
 Their framework follows a popular pattern: generate a space of possible choices, estimate the performance of different choices, and select an option using an ILP formulation. 
 This chapter's ILP problem formulation is similar to theirs, although it does not use the data layout graph intermediate representation.
 Furthermore, where their model for cost estimation focuses on communication costs in a distributed context, this approach models on-node performance costs of cache misses.
 
-\subsubsection{Polyhedral Compilation}
+\paragraph{Polyhedral Compilation}
 The polyhedral model, traditionally used for schedule transformations, is commonly leveraged for data layout transformations as well.
 With the rise of multicore chips, new strategies were needed to manage shared on-chip resources. 
 Work by Lu et al.~\cite{lu2009data} and Zhang et al.~\cite{zhang2011optimizing} develop layout optimization schemes based on the polyhedral model and use a combination of strip-mining, permutation, and padding transformations.
 
-\subsubsection{Heterogenous Computing}
+\paragraph{Heterogenous Computing}
 Data layout transformation frameworks are also popular for heterogeneous programming systems, especially for stencil codes.
 Sung, Stratton, and Hwu~\cite{sung2010data} use data layout transformations to relieve pressure on memory controllers in structured grid applications by spreading data out across the address space based on the indexing behavior of the application.
 Henretty et al.~\cite{henretty2011data} develop a layout transformation and accompanying static analysis to address stream alignment conflicts for SIMD architectures.
@@ -1092,16 +1063,16 @@ Another approach by Kofler, Cosenza, and Fahringer~\cite{kofler2015automatic} co
 With the exception of Majeti et al., these approaches do not provide an interface to the developer, and without exception are compiler-based approaches.
 This approach presents an interface to the developer in the form of a library API, allowing user control and low-cost integration into existing workloads.
 
-\subsubsection{Pragmas}
+\paragraph{Pragmas}
 Although still in the realm of the compiler-based techniques, pragmas have been suggested as a solution to the problem of providing control over the transformations to the user.
 Proposals to add such pragmas have been submitted to OpenMP~\cite{kruse2019design} and Clang~\cite{kruse2018user}.
 Other work has implemented transformation pragmas into a source-to-source compiler~\cite{xu2014semi}. 
 
-\subsubsection{Domain-Specific Languages}
+\paragraph{Domain-Specific Languages}
 Domain-specific language approaches are another avenue for presenting users with control of the data layout transformations to apply. 
 Kronawitter et al.~\cite{kronawitter2018automatic} incorporate data layout specifications into the ExaSlang DSL.
 Using a polyhedral framework, the Tiramisu DSL~\cite{baghdadi2019tiramisu} also enables data layout transformation specifications.
-In constrast to these specialized approaches, the approach here seeks to support a wider class of computations without needing the additional machinery required to use DSLs. 
+In contrast to these specialized approaches, the approach here seeks to support a wider class of computations without needing the additional machinery required to use DSLs. 
 
 
 \section{Conclusion}
@@ -1111,9 +1082,9 @@ One way of doing this is by changing how data is stored within memory.
 Yet, in performance portability libraries like RAJA and Kokkos, where one codebase is used for machines with different architectures, there are not yet tools for transforming the layout of data between parts of a computation. 
 Thus, if a developer wants to introduce these optimizations, they are left in a time-consuming, error-prone situation --- further exacerbated by the potential for data layout transformations to not be worth the overhead.
 
-\FormatDecisions{} remedies this situation by combining a declarative format specification interface with an automated decision model.
+\FormatDecisions{} remedies this situation by combining a format specification interface with an automated decision model.
 Integrated directly into the performance portability library RAJA, but possible in any library with computation objects and a data View-like abstraction, \FormatDecisions{} provides a flexible interface for quick exploration of data layout changes. 
-Additionally, \FormatDecisions{} uses an ILP formulation to optionally identify other profitable transformations, \enquote{filling in} the user specification.
+Additionally, \FormatDecisions{} uses an nonlinear integer programming formulation to optionally identify other profitable transformations, \enquote{filling in} the user specification.
 
 When evaluated against hand-implemented layout transformations on six benchmark kernels, \FormatDecisions{} provides comparable performance improvements for sufficiently large problem sizes with a fraction of the code changes.
 Furthermore, subsequent modifications to the layout transformations, for example as part of porting a codebase to a new machine, are reduced to single-line changes. 
